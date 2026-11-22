@@ -31,6 +31,8 @@ jobs:
           node --version
           test "$(pnpm --version)" = "12.16.0"
       - name: Restore public dependencies
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
         run: |
           sudo apt-get update
           sudo apt-get install -y --no-install-recommends libkrb5-dev libx11-dev libxkbfile-dev
