@@ -2975,6 +2975,47 @@ suite('AutomationsCardsWidget', () => {
 		});
 	});
 
+	test('automation history screenshot fixture', async (): Promise<void> => {
+		const { automationService, sessionsManagementService, widget, chatModels } = setup();
+		widget.element.style.width = '760px';
+		widget.element.dataset.screenshotFixture = 'automation-history';
+		automationService.setAutomations([automation()]);
+		const history: IAutomationRun[] = createHistoryRuns(sessionsManagementService, 12);
+		const status: ISettableObservable<SessionStatus> = observableValue('screenshotStatus', SessionStatus.NeedsInput);
+		history[10] = { ...history[10], externalResource: URI.parse('https://github.com/owner/repo/tasks/hydrated') };
+		sessionsManagementService.addSession(history[10].sessionResource!, 'Cloud approval awaiting input', status);
+		sessionsManagementService.addSession(history[11].sessionResource!, 'Local question awaiting input', status);
+		const resource: URI = URI.parse('copilot-cloud-agent:/task/resumed');
+		const cloud: IAutomationRun = run({
+			id: 'cloud-screenshot', status: 'running', needsInput: true, sessionResource: undefined,
+			startedAt: new Date(Date.now() - 30 * 86_400_000).toISOString(),
+			externalResource: URI.parse('https://github.com/owner/repo/tasks/pending'),
+		});
+		const capture = (state: 'pending' | 'resumed'): Promise<void> => new Promise<void>((resolve, reject) => {
+			const listener = (): void => {
+				window.clearTimeout(timer);
+				resolve();
+			};
+			const timer: number = window.setTimeout(() => {
+				document.removeEventListener('automation-screenshot-complete', listener);
+				reject(new Error('Automation screenshot capture timed out'));
+			}, 30_000);
+			document.addEventListener('automation-screenshot-complete', listener, { once: true });
+			console.log(`AUTOMATION_SCREENSHOT:${state}`);
+		});
+		automationService.setRuns([...history, cloud]);
+		await capture('pending');
+		status.set(SessionStatus.Completed, undefined);
+		sessionsManagementService.addSession(resource, 'Cloud run resumed', constObservable(SessionStatus.InProgress));
+		chatModels.set([upcastPartial<IChatModel>({
+			sessionResource: resource, requestInProgress: constObservable(true), requestNeedsInput: constObservable(undefined),
+			lastRequestObs: constObservable(upcastPartial<IChatRequestModel>({ timestamp: Date.now() })),
+			onDidChange: Event.None, getRequests: () => [],
+		})], undefined);
+		automationService.setRuns([...history, { ...cloud, sessionResource: resource }]);
+		await capture('resumed');
+	});
+
 	test('automation history leaves Needs Attention when local progress supersedes a stale cloud prompt', (): void => {
 		const { automationService, widget, chatModels } = setup();
 		automationService.setAutomations([automation()]);

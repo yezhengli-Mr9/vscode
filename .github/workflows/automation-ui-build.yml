@@ -11,7 +11,7 @@ permissions:
 jobs:
   client-build:
     runs-on: ubuntu-24.04
-    timeout-minutes: 20
+    timeout-minutes: 15
     env:
       PNPM_CONFIG_REGISTRY: https://registry.npmjs.org/
       PNPM_CONFIG_FROZEN_LOCKFILE: "true"
@@ -46,6 +46,21 @@ jobs:
           --browser chromium
           --grep "automation history surfaces older|automation history leaves Needs Attention|automation prompt regrouping|history keeps older active"
           --tfs automation-feedback
+      - name: Capture upstream UI before the fix
+        env:
+          VSCODE_AUTOMATION_SCREENSHOT_PHASE: before
+        run: |
+          git fetch --depth=1 origin 733a99842b0e0e14c3593dfab31fff2035478ba0
+          git restore --source=733a99842b0e0e14c3593dfab31fff2035478ba0 -- src/vs/sessions/contrib/automations/browser/automationRunHistory.ts
+          pnpm run build-fast --client-only
+          node test/unit/browser/index.js --run src/vs/sessions/contrib/sessions/test/browser/automationsView.test.ts --browser chromium --grep "automation history screenshot fixture" --tfs screenshots-before
+      - name: Capture patched UI
+        env:
+          VSCODE_AUTOMATION_SCREENSHOT_PHASE: after
+        run: |
+          git restore --source=HEAD -- src/vs/sessions/contrib/automations/browser/automationRunHistory.ts
+          pnpm run build-fast --client-only
+          node test/unit/browser/index.js --run src/vs/sessions/contrib/sessions/test/browser/automationsView.test.ts --browser chromium --grep "automation history screenshot fixture" --tfs screenshots-after
       - name: Save client output
         run: tar -czf client-output.tar.gz out
       - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
@@ -55,5 +70,6 @@ jobs:
           path: |
             test-results
             client-output.tar.gz
+            screenshots
           retention-days: 7
           if-no-files-found: warn

@@ -359,6 +359,9 @@ async function runTestsInBrowser(testModules, browserType, browserChannel, grep,
 	const browser = await playwright[browserType].launch({ headless: !Boolean(args.debug), devtools: Boolean(args.debug), channel: browserChannel });
 	const context = await browser.newContext();
 	const page = await context.newPage();
+	if (process.env.VSCODE_AUTOMATION_SCREENSHOT_PHASE) {
+		await page.setViewportSize({ width: 960, height: 1200 });
+	}
 	const target = new URL(server.url + '/test/unit/browser/renderer.html');
 	target.searchParams.set('baseUrl', url.pathToFileURL(path.join(rootDir, 'src')).toString());
 	if (args.build) {
@@ -400,6 +403,20 @@ async function runTestsInBrowser(testModules, browserType, browserChannel, grep,
 	}
 
 	page.on('console', async msg => {
+		if (process.env.VSCODE_AUTOMATION_SCREENSHOT_PHASE && msg.text().startsWith('AUTOMATION_SCREENSHOT:')) {
+			const phase = process.env.VSCODE_AUTOMATION_SCREENSHOT_PHASE;
+			const state = msg.text().slice('AUTOMATION_SCREENSHOT:'.length);
+			if (!['before', 'after'].includes(phase) || !['pending', 'resumed'].includes(state)) {
+				throw new Error('Invalid automation screenshot request');
+			}
+			await fs.promises.mkdir(path.join(rootDir, 'screenshots'), { recursive: true });
+			await page.locator('[data-screenshot-fixture="automation-history"] .automations-history').screenshot({
+				path: path.join(rootDir, 'screenshots', `${phase}-${state}.png`),
+				animations: 'disabled',
+			});
+			await page.evaluate(() => document.dispatchEvent(new Event('automation-screenshot-complete')));
+			return;
+		}
 		consoleLogFn(msg)(msg.text(), await Promise.all(msg.args().map(async arg => await arg.jsonValue())));
 	});
 
