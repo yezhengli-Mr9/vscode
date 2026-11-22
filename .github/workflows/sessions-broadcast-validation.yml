@@ -1,0 +1,81 @@
+name: Shared instruction validation
+
+on:
+  push:
+    branches:
+      - experiment/sessions-broadcast-validation
+
+permissions:
+  contents: read
+
+jobs:
+  validate:
+    if: github.repository == 'yezhengli-Mr9/vscode'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    env:
+      PNPM_CONFIG_REGISTRY: https://registry.npmjs.org/
+      PNPM_CONFIG_FROZEN_LOCKFILE: "true"
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020
+        with:
+          node-version-file: .nvmrc
+      - uses: pnpm/action-setup@f40ffcd9367d9f12939873eb1018b921a783ffaa
+        with:
+          version: 12.16.0
+          standalone: true
+      - name: Restore public dependencies
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends libkrb5-dev libx11-dev libxkbfile-dev
+          pnpm install --frozen-lockfile --registry https://registry.npmjs.org/
+      - name: Build client
+        run: pnpm run build-fast --client-only
+      - name: Install test browser
+        run: pnpm exec playwright install --with-deps chromium
+      - name: Typecheck source
+        id: typecheck
+        continue-on-error: true
+        env:
+          NODE_OPTIONS: --max-old-space-size=6144
+        run: pnpm run typecheck-client --pretty false > typecheck.log 2>&1
+      - name: Lint feature
+        id: lint
+        continue-on-error: true
+        run: |
+          pnpm run oxlint src/vs/workbench/contrib/sessions/browser/sessionsBroadcast.ts src/vs/workbench/contrib/sessions/browser/views/sessionsListActions.ts src/vs/workbench/contrib/sessions/test/browser/sessionsBroadcast.test.ts > lint.log 2>&1
+      - name: Run focused regressions
+        id: tests
+        continue-on-error: true
+        run: |
+          node test/unit/browser/index.js --run src/vs/workbench/contrib/sessions/test/browser/sessionsBroadcast.test.ts --browser chromium --tfs shared-instruction
+      - name: Exercise real native picker and input
+        id: experiment
+        continue-on-error: true
+        env:
+          VSCODE_BROADCAST_EXPERIMENT: "1"
+        run: |
+          node test/unit/browser/index.js --run src/vs/platform/quickinput/test/browser/quickInput.test.ts --browser chromium --grep "shared instruction native UI experiment" --tfs shared-instruction-ui
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        if: always()
+        with:
+          name: shared-instruction-validation
+          path: |
+            test-results
+            screenshots
+            typecheck.log
+            lint.log
+          retention-days: 7
+          if-no-files-found: error
+      - name: Require validation success
+        if: always()
+        run: |
+          test "${{ steps.typecheck.outcome }}" = success
+          test "${{ steps.lint.outcome }}" = success
+          test "${{ steps.tests.outcome }}" = success
+          test "${{ steps.experiment.outcome }}" = success

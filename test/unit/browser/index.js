@@ -359,6 +359,9 @@ async function runTestsInBrowser(testModules, browserType, browserChannel, grep,
 	const browser = await playwright[browserType].launch({ headless: !Boolean(args.debug), devtools: Boolean(args.debug), channel: browserChannel });
 	const context = await browser.newContext();
 	const page = await context.newPage();
+	if (process.env.VSCODE_BROADCAST_EXPERIMENT) {
+		await page.setViewportSize({ width: 1000, height: 700 });
+	}
 	const target = new URL(server.url + '/test/unit/browser/renderer.html');
 	target.searchParams.set('baseUrl', url.pathToFileURL(path.join(rootDir, 'src')).toString());
 	if (args.build) {
@@ -387,6 +390,19 @@ async function runTestsInBrowser(testModules, browserType, browserChannel, grep,
 	}
 
 	await page.goto(target.href);
+	if (process.env.VSCODE_BROADCAST_EXPERIMENT) {
+		for (const stylesheet of [
+			'node_modules/@vscode/codicons/dist/codicon.css',
+			'src/vs/base/browser/ui/button/button.css',
+			'src/vs/base/browser/ui/inputbox/inputBox.css',
+			'src/vs/base/browser/ui/list/list.css',
+			'src/vs/base/browser/ui/toggle/toggle.css',
+			'src/vs/platform/quickinput/browser/media/quickInput.css',
+			'src/vs/workbench/browser/media/style.css',
+		]) {
+			await page.addStyleTag({ url: `${server.url}/${stylesheet}` });
+		}
+	}
 
 	if (args.build) {
 		const nlsMessages = await fs.promises.readFile(path.join(out, 'nls.messages.json'), 'utf8');
@@ -400,6 +416,31 @@ async function runTestsInBrowser(testModules, browserType, browserChannel, grep,
 	}
 
 	page.on('console', async msg => {
+		if (process.env.VSCODE_BROADCAST_EXPERIMENT && msg.text().startsWith('BROADCAST_SCREENSHOT:')) {
+			const phase = msg.text().slice('BROADCAST_SCREENSHOT:'.length);
+			if (!['selection', 'instruction'].includes(phase)) {
+				throw new Error('Invalid shared instruction screenshot phase');
+			}
+			const widget = page.locator('[data-screenshot-fixture="shared-instruction"] .quick-input-widget');
+			await widget.waitFor({ state: 'visible' });
+			await fs.promises.mkdir(path.join(rootDir, 'screenshots'), { recursive: true });
+			if (phase === 'selection') {
+				const boxes = widget.locator('.quick-input-list .monaco-checkbox');
+				if (await boxes.count() !== 4) {
+					throw new Error('Expected four eligible chat rows');
+				}
+				for (const index of [0, 1, 3]) {
+					await boxes.nth(index).click();
+				}
+				await widget.screenshot({ path: path.join(rootDir, 'screenshots', 'selected-chats.png'), animations: 'disabled' });
+				await widget.locator('.quick-input-action .monaco-button:visible').click();
+			} else {
+				await widget.locator('input').fill('Run the focused tests and summarize failures.');
+				await widget.screenshot({ path: path.join(rootDir, 'screenshots', 'shared-instruction.png'), animations: 'disabled' });
+				await page.evaluate(() => document.dispatchEvent(new Event('broadcast-experiment-accept')));
+			}
+			return;
+		}
 		consoleLogFn(msg)(msg.text(), await Promise.all(msg.args().map(async arg => await arg.jsonValue())));
 	});
 
