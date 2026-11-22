@@ -224,10 +224,15 @@ suite('QuickInput', () => { // https://github.com/microsoft/vscode/issues/147543
 			mainChat: constObservable(chats[0]), chats: constObservable(chats),
 			status: constObservable(SessionStatus.Completed), isArchived: constObservable(false),
 			isAutomation: constObservable(automation),
+			capabilities: constObservable({ supportsMultipleChats: true, supportsBackgroundDispatch: true }),
 		});
 		const sessions = [
 			makeSession('ordinary', 'Agent session', [main, nested, untouched], false),
 			makeSession('automation', 'Nightly checks', [run], true),
+			{
+				...makeSession('cloud-automation', 'Cloud automation', [makeChat('cloud-run', 'Unsupported Cloud automation run')], true),
+				capabilities: constObservable({ supportsMultipleChats: false, supportsBackgroundDispatch: false }),
+			},
 		];
 		const sent: { chat: string; query: string }[] = [];
 		instantiationService.stub(ISessionsManagementService, {

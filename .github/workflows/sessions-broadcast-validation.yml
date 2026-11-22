@@ -3,7 +3,7 @@ name: Shared instruction validation
 on:
   push:
     branches:
-      - experiment/sessions-broadcast-validation
+      - experiment/sessions-broadcast-review-validation-20261122
 
 permissions:
   contents: read
@@ -12,7 +12,7 @@ jobs:
   validate:
     if: github.repository == 'yezhengli-Mr9/vscode'
     runs-on: ubuntu-24.04
-    timeout-minutes: 15
+    timeout-minutes: 25
     env:
       PNPM_CONFIG_REGISTRY: https://registry.npmjs.org/
       PNPM_CONFIG_FROZEN_LOCKFILE: "true"
@@ -33,7 +33,10 @@ jobs:
         run: |
           sudo apt-get update
           sudo apt-get install -y --no-install-recommends libkrb5-dev libx11-dev libxkbfile-dev
-          pnpm install --frozen-lockfile --registry https://registry.npmjs.org/
+          pnpm install --frozen-lockfile --ignore-scripts --registry https://registry.npmjs.org/
+          pnpm -C build install --frozen-lockfile --ignore-scripts --registry https://registry.npmjs.org/
+          pnpm -C build rebuild esbuild
+          node build/npm/electronTypes.ts
       - name: Build client
         run: pnpm run build-fast --client-only
       - name: Install test browser
@@ -48,12 +51,15 @@ jobs:
         id: lint
         continue-on-error: true
         run: |
-          pnpm run oxlint src/vs/workbench/contrib/sessions/browser/sessionsBroadcast.ts src/vs/workbench/contrib/sessions/browser/views/sessionsListActions.ts src/vs/workbench/contrib/sessions/test/browser/sessionsBroadcast.test.ts > lint.log 2>&1
+          files=$(git diff --name-only 7bf1a053562eb7542465becceff583d62d537c89 HEAD -- src/vs/workbench/contrib/sessions src/vs/workbench/services/sessions/common/session.ts src/vs/sessions/contrib/providers)
+          pnpm run oxlint $files > lint.log 2>&1
+          node build/hygiene.ts $files > hygiene.log 2>&1
       - name: Run focused regressions
         id: tests
         continue-on-error: true
         run: |
           node test/unit/browser/index.js --run src/vs/workbench/contrib/sessions/test/browser/sessionsBroadcast.test.ts --browser chromium --tfs shared-instruction
+          node test/unit/browser/index.js --run src/vs/sessions/contrib/providers/agentHost/test/browser/localAgentHostSessionsProvider.test.ts --run src/vs/sessions/contrib/providers/copilotChatSessions/test/browser/copilotChatSessionsProvider.test.ts --run src/vs/sessions/services/sessions/test/browser/sessionsManagementService.test.ts --browser chromium --grep "broadcast retains|sendRequest clears chat input draft|background row sends reject|setModel applies to existing sessions|automation provenance updates|sendRequestInBackground awaits" --tfs shared-instruction-providers
       - name: Exercise real native picker and input
         id: experiment
         continue-on-error: true
@@ -70,6 +76,7 @@ jobs:
             screenshots
             typecheck.log
             lint.log
+            hygiene.log
           retention-days: 7
           if-no-files-found: error
       - name: Require validation success
