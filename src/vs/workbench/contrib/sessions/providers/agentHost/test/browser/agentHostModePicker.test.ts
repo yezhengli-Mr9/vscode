@@ -6,6 +6,7 @@
 import assert from 'assert';
 import { ColorThemeData } from '../../../../../../services/themes/common/colorThemeData.js';
 import { generateColorThemeCSS } from '../../../../../../services/themes/browser/colorThemeCss.js';
+import '../../../../../../common/agentsColors.js';
 import * as dom from '../../../../../../../base/browser/dom.js';
 import { Emitter, Event } from '../../../../../../../base/common/event.js';
 import { autorun, constObservable, observableValue } from '../../../../../../../base/common/observable.js';

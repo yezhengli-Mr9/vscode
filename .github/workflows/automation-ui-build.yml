@@ -11,7 +11,7 @@ permissions:
 jobs:
   client-build:
     runs-on: ubuntu-24.04
-    timeout-minutes: 15
+    timeout-minutes: 10
     env:
       PNPM_CONFIG_REGISTRY: https://registry.npmjs.org/
       PNPM_CONFIG_FROZEN_LOCKFILE: "true"
@@ -52,12 +52,13 @@ jobs:
         continue-on-error: true
         env:
           NODE_OPTIONS: --max-old-space-size=6144
-        run: pnpm exec tsc --noEmit --project src/tsconfig.json --pretty false > typecheck.log 2>&1
+        run: pnpm run typecheck-client --pretty false > typecheck.log 2>&1
       - name: Lint Allow all changes
         id: lint
         continue-on-error: true
         run: |
-          git diff --name-only 733a99842b0e0e14c3593dfab31fff2035478ba0 -- src/vs/workbench | grep '\.ts$' | xargs pnpm exec eslint > lint.log 2>&1
+          git diff --name-only 733a99842b0e0e14c3593dfab31fff2035478ba0 -- src/vs/workbench | grep '\.ts$' | xargs pnpm run oxlint > lint.log 2>&1
+          pnpm run stylelint src/vs/workbench/contrib/chat/browser/widget/input/media/chatInputPicker.css >> lint.log 2>&1
       - name: Validate permission controls
         id: permissiontests
         continue-on-error: true

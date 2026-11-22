@@ -6,6 +6,7 @@
 import assert from 'assert';
 import { ColorThemeData } from '../../../../../workbench/services/themes/common/colorThemeData.js';
 import { generateColorThemeCSS } from '../../../../../workbench/services/themes/browser/colorThemeCss.js';
+import '../../../../../workbench/common/agentsColors.js';
 import { AutomationDisableConditionKind } from '../../../../../platform/agentHost/common/state/protocol/channels-automation/state.js';
 import { stub, useFakeTimers } from 'sinon';
 import { ActionBar } from '../../../../../base/browser/ui/actionbar/actionbar.js';
@@ -2981,9 +2982,10 @@ suite('AutomationsCardsWidget', () => {
 		const { automationService, sessionsManagementService, widget, chatModels } = setup();
 		const frame: HTMLElement = document.createElement('div');
 		frame.className = 'monaco-workbench agent-sessions-workbench linux vs-dark';
+		frame.style.height = '1100px';
 		document.body.appendChild(frame);
 		frame.appendChild(widget.element);
-		store.add({ dispose: () => frame.remove() });
+		disposables.add({ dispose: () => frame.remove() });
 		const themeStyle: HTMLStyleElement = document.createElement('style');
 		themeStyle.textContent = generateColorThemeCSS(ColorThemeData.createUnloadedTheme('vs-dark'), '.monaco-workbench').code;
 		frame.appendChild(themeStyle);
@@ -3002,6 +3004,7 @@ suite('AutomationsCardsWidget', () => {
 			externalResource: URI.parse('https://github.com/owner/repo/tasks/pending'),
 		});
 		const capture = (state: 'pending' | 'resumed'): Promise<void> => new Promise<void>((resolve, reject) => {
+			widget.layout(760, 1100);
 			const listener = (): void => {
 				window.clearTimeout(timer);
 				resolve();
