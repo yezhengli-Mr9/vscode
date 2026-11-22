@@ -1,0 +1,56 @@
+name: Automation UI build experiment
+
+on:
+  push:
+    branches:
+      - experiment/automation-ui-build-20261122
+
+permissions:
+  contents: read
+
+jobs:
+  client-build:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    env:
+      PNPM_CONFIG_REGISTRY: https://registry.npmjs.org/
+      PNPM_CONFIG_FROZEN_LOCKFILE: "true"
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020
+        with:
+          node-version-file: .nvmrc
+      - uses: pnpm/action-setup@f40ffcd9367d9f12939873eb1018b921a783ffaa
+        with:
+          version: 12.16.0
+          standalone: true
+      - name: Check pinned tools
+        run: |
+          node --version
+          test "$(pnpm --version)" = "12.16.0"
+      - name: Restore public dependencies
+        run: pnpm install --frozen-lockfile --registry https://registry.npmjs.org/
+      - name: Build client
+        run: pnpm run build-fast --client-only
+      - name: Install test browser
+        run: pnpm exec playwright install --with-deps chromium
+      - name: Run selected automation browser regressions
+        run: >-
+          node test/unit/browser/index.js
+          --run src/vs/sessions/contrib/sessions/test/browser/automationsView.test.ts
+          --browser chromium
+          --grep "automation history surfaces older|automation history leaves Needs Attention|automation prompt regrouping|history keeps older active"
+          --tfs automation-feedback
+      - name: Save client output
+        run: tar -czf client-output.tar.gz out
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        if: always()
+        with:
+          name: automation-ui-build-experiment
+          path: |
+            test-results
+            client-output.tar.gz
+          retention-days: 7
+          if-no-files-found: warn
