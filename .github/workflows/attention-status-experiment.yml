@@ -55,7 +55,6 @@ jobs:
         env:
           ATTENTION_PHASE: before
         run: |
-          git restore --source=HEAD^ -- src/vs/platform/agentHost/node/agentHostStateManager.ts
           python3 - <<'PY'
           from pathlib import Path
           p = Path('src/vs/platform/agentHost/node/agentHostStateManager.ts')
