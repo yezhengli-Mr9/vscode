@@ -4,6 +4,8 @@
  *--------------------------------------------------------------------------------------------*/
 
 import assert from 'assert';
+import { ColorThemeData } from '../../../../../../services/themes/common/colorThemeData.js';
+import { generateColorThemeCSS } from '../../../../../../services/themes/browser/colorThemeCss.js';
 import * as dom from '../../../../../../../base/browser/dom.js';
 import { Emitter, Event } from '../../../../../../../base/common/event.js';
 import { autorun, constObservable, observableValue } from '../../../../../../../base/common/observable.js';
@@ -241,6 +243,31 @@ suite('AgentHostModePicker', () => {
 			assert.deepStrictEqual(rig.writes, confirmed ? [{ session: 'test-session', property: 'autoApprove', value: 'autoApprove' }] : []);
 			assert.strictEqual(rig.actionWidget.isVisible, false);
 		}
+	});
+
+	test('Allow all screenshot fixture', async (): Promise<void> => {
+		const rig = setup();
+		const frame: HTMLElement = dom.append(document.body, dom.$('.monaco-workbench.agent-sessions-workbench.linux.vs-dark'));
+		frame.dataset.screenshotFixture = 'allow-all';
+		frame.style.width = '760px';
+		frame.style.padding = '16px';
+		const themeStyle: HTMLStyleElement = document.createElement('style');
+		frame.appendChild(themeStyle);
+		themeStyle.textContent = generateColorThemeCSS(ColorThemeData.createUnloadedTheme('vs-dark'), '.monaco-workbench').code;
+		frame.appendChild(rig.trigger.parentElement!);
+		store.add({ dispose: () => frame.remove() });
+		await new Promise<void>((resolve, reject) => {
+			const listener = (): void => {
+				window.clearTimeout(timer);
+				resolve();
+			};
+			const timer: number = window.setTimeout(() => {
+				document.removeEventListener('allow-all-screenshot-complete', listener);
+				reject(new Error('Allow all screenshot capture timed out'));
+			}, 30_000);
+			document.addEventListener('allow-all-screenshot-complete', listener, { once: true });
+			console.log('ALLOW_ALL_SCREENSHOT:visible');
+		});
 	});
 
 	test('updates the sandbox toggle, icon, and accessible label while Dev Container availability is pending', async () => {

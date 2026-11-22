@@ -390,6 +390,24 @@ async function runTestsInBrowser(testModules, browserType, browserChannel, grep,
 	}
 
 	await page.goto(target.href);
+	if (process.env.VSCODE_AUTOMATION_SCREENSHOT_PHASE) {
+		for (const stylesheet of [
+			'node_modules/@vscode/codicons/dist/codicon.css',
+			'src/vs/base/browser/ui/button/button.css',
+			'src/vs/base/browser/ui/actionbar/actionbar.css',
+			'src/vs/base/browser/ui/list/list.css',
+			'src/vs/workbench/browser/media/style.css',
+			'src/vs/workbench/contrib/sessions/browser/media/sessionsList.css',
+			'src/vs/workbench/contrib/chat/browser/widget/input/media/chatInputPicker.css',
+			'src/vs/workbench/contrib/chat/browser/agentSessions/agentHost/media/agentHostChatInputPicker.css',
+			'src/vs/workbench/contrib/sessions/browser/chat/media/chatInput.css',
+			'src/vs/sessions/browser/media/style.css',
+			'src/vs/sessions/browser/media/workbench.css',
+			'src/vs/sessions/contrib/sessions/browser/media/automationsCards.css',
+		]) {
+			await page.addStyleTag({ url: `${server.url}/${stylesheet}` });
+		}
+	}
 
 	if (args.build) {
 		const nlsMessages = await fs.promises.readFile(path.join(out, 'nls.messages.json'), 'utf8');
@@ -403,6 +421,15 @@ async function runTestsInBrowser(testModules, browserType, browserChannel, grep,
 	}
 
 	page.on('console', async msg => {
+		if (process.env.VSCODE_AUTOMATION_SCREENSHOT_PHASE && msg.text() === 'ALLOW_ALL_SCREENSHOT:visible') {
+			await fs.promises.mkdir(path.join(rootDir, 'screenshots'), { recursive: true });
+			await page.locator('[data-screenshot-fixture="allow-all"]').screenshot({
+				path: path.join(rootDir, 'screenshots', 'allow-all.png'),
+				animations: 'disabled',
+			});
+			await page.evaluate(() => document.dispatchEvent(new Event('allow-all-screenshot-complete')));
+			return;
+		}
 		if (process.env.VSCODE_AUTOMATION_SCREENSHOT_PHASE && msg.text().startsWith('AUTOMATION_SCREENSHOT:')) {
 			const phase = process.env.VSCODE_AUTOMATION_SCREENSHOT_PHASE;
 			const state = msg.text().slice('AUTOMATION_SCREENSHOT:'.length);

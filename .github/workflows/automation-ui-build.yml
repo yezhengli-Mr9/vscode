@@ -36,6 +36,7 @@ jobs:
           sudo apt-get install -y --no-install-recommends libkrb5-dev libx11-dev libxkbfile-dev
           pnpm install --frozen-lockfile --registry https://registry.npmjs.org/
       - name: Build client
+        id: clientbuild
         run: pnpm run build-fast --client-only
       - name: Install test browser
         run: pnpm exec playwright install --with-deps chromium
@@ -46,6 +47,26 @@ jobs:
           --browser chromium
           --grep "automation history surfaces older|automation history leaves Needs Attention|automation prompt regrouping|history keeps older active"
           --tfs automation-feedback
+      - name: Typecheck source
+        id: typecheck
+        continue-on-error: true
+        env:
+          NODE_OPTIONS: --max-old-space-size=6144
+        run: pnpm exec tsc --noEmit --project src/tsconfig.json --pretty false > typecheck.log 2>&1
+      - name: Lint Allow all changes
+        id: lint
+        continue-on-error: true
+        run: |
+          git diff --name-only 733a99842b0e0e14c3593dfab31fff2035478ba0 -- src/vs/workbench | grep '\.ts$' | xargs pnpm exec eslint > lint.log 2>&1
+      - name: Validate permission controls
+        id: permissiontests
+        continue-on-error: true
+        run: |
+          printf '%s\n' \
+            src/vs/workbench/contrib/chat/test/browser/widget/input/permissionPickerActionItem.test.ts \
+            src/vs/workbench/contrib/chat/test/browser/agentSessions/agentHostChatInputPicker.test.ts \
+            src/vs/workbench/contrib/sessions/providers/agentHost/test/browser/agentHostModePicker.test.ts > permission-tests.txt
+          node test/unit/browser/index.js --runList permission-tests.txt --browser chromium --grep "Allow all shortcut|PermissionPickerActionItem|policy|warning|read.only|cloud drafts reuse" --tfs allow-all
       - name: Capture upstream UI before the fix
         env:
           VSCODE_AUTOMATION_SCREENSHOT_PHASE: before
@@ -61,6 +82,7 @@ jobs:
           git restore --source=HEAD -- src/vs/sessions/contrib/automations/browser/automationRunHistory.ts
           pnpm run build-fast --client-only
           node test/unit/browser/index.js --run src/vs/sessions/contrib/sessions/test/browser/automationsView.test.ts --browser chromium --grep "automation history screenshot fixture" --tfs screenshots-after
+          node test/unit/browser/index.js --run src/vs/workbench/contrib/sessions/providers/agentHost/test/browser/agentHostModePicker.test.ts --browser chromium --grep "Allow all screenshot fixture" --tfs allow-all-screenshot
       - name: Save client output
         run: tar -czf client-output.tar.gz out
       - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
@@ -71,5 +93,13 @@ jobs:
             test-results
             client-output.tar.gz
             screenshots
+            typecheck.log
+            lint.log
           retention-days: 7
           if-no-files-found: warn
+      - name: Require validation success
+        if: always()
+        run: |
+          test "${{ steps.typecheck.outcome }}" = success
+          test "${{ steps.lint.outcome }}" = success
+          test "${{ steps.permissiontests.outcome }}" = success

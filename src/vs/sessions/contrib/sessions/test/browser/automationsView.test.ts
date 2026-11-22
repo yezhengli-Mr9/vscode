@@ -4,6 +4,8 @@
  *--------------------------------------------------------------------------------------------*/
 
 import assert from 'assert';
+import { ColorThemeData } from '../../../../../workbench/services/themes/common/colorThemeData.js';
+import { generateColorThemeCSS } from '../../../../../workbench/services/themes/browser/colorThemeCss.js';
 import { AutomationDisableConditionKind } from '../../../../../platform/agentHost/common/state/protocol/channels-automation/state.js';
 import { stub, useFakeTimers } from 'sinon';
 import { ActionBar } from '../../../../../base/browser/ui/actionbar/actionbar.js';
@@ -2977,6 +2979,14 @@ suite('AutomationsCardsWidget', () => {
 
 	test('automation history screenshot fixture', async (): Promise<void> => {
 		const { automationService, sessionsManagementService, widget, chatModels } = setup();
+		const frame: HTMLElement = document.createElement('div');
+		frame.className = 'monaco-workbench agent-sessions-workbench linux vs-dark';
+		document.body.appendChild(frame);
+		frame.appendChild(widget.element);
+		store.add({ dispose: () => frame.remove() });
+		const themeStyle: HTMLStyleElement = document.createElement('style');
+		themeStyle.textContent = generateColorThemeCSS(ColorThemeData.createUnloadedTheme('vs-dark'), '.monaco-workbench').code;
+		frame.appendChild(themeStyle);
 		widget.element.style.width = '760px';
 		widget.element.dataset.screenshotFixture = 'automation-history';
 		automationService.setAutomations([automation()]);
