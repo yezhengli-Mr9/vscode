@@ -1,0 +1,90 @@
+name: Attention status experiment
+
+on:
+  push:
+    branches:
+      - evidence/attention-status-20261122
+
+permissions:
+  contents: read
+
+jobs:
+  experiment:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    env:
+      PNPM_CONFIG_REGISTRY: https://registry.npmjs.org/
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020
+        with:
+          node-version-file: .nvmrc
+      - uses: pnpm/action-setup@f40ffcd9367d9f12939873eb1018b921a783ffaa
+        with:
+          version: 12.16.0
+          standalone: true
+      - name: Restore build and test dependencies
+        run: |
+          pnpm install --frozen-lockfile --ignore-scripts --registry https://registry.npmjs.org/
+          pnpm -C build install --frozen-lockfile --ignore-scripts --registry https://registry.npmjs.org/
+          pnpm -C build rebuild esbuild
+          node build/npm/electronTypes.ts
+      - name: Compile client
+        run: pnpm run build-fast --client-only
+      - name: Run state-manager regressions
+        run: node test/unit/node/index.js --run src/vs/platform/agentHost/test/node/agentHostStateManager.test.ts > tests.log 2>&1
+      - name: Typecheck client
+        env:
+          NODE_OPTIONS: --max-old-space-size=6144
+        run: pnpm run typecheck-client --pretty false > typecheck.log 2>&1
+      - name: Lint changed TypeScript
+        run: |
+          pnpm run oxlint src/vs/platform/agentHost/node/agentHostStateManager.ts src/vs/platform/agentHost/test/node/agentHostStateManager.test.ts src/vs/platform/agentHost/test/node/attentionStatus.experiment.ts src/vs/workbench/contrib/chat/test/browser/agentSessions/agentSessionsControl.test.ts > lint.log 2>&1
+          git diff --check
+      - name: Install Chromium
+        run: pnpm exec playwright install --with-deps chromium
+      - name: Capture fixed behavior with real timers and compiled renderer
+        env:
+          ATTENTION_PHASE: after
+        run: |
+          node out/vs/platform/agentHost/test/node/attentionStatus.experiment.js > after-experiment.log 2>&1
+          node test/unit/browser/index.js --run src/vs/workbench/contrib/chat/test/browser/agentSessions/agentSessionsControl.test.ts --browser chromium --grep "attention status screenshot experiment" --tfs attention-after
+      - name: Reproduce baseline and verify regression failures
+        env:
+          ATTENTION_PHASE: before
+        run: |
+          git restore --source=HEAD^ -- src/vs/platform/agentHost/node/agentHostStateManager.ts
+          python3 - <<'PY'
+          from pathlib import Path
+          p = Path('src/vs/platform/agentHost/node/agentHostStateManager.ts')
+          s = p.read_text()
+          fixed = 'if (!this._scheduler.isScheduled()) {\n\t\t\tthis._scheduler.schedule();\n\t\t}'
+          assert s.count(fixed) == 1
+          p.write_text(s.replace(fixed, 'this._scheduler.schedule();'))
+          PY
+          pnpm run build-fast --client-only
+          set +e
+          node test/unit/node/index.js --run src/vs/platform/agentHost/test/node/agentHostStateManager.test.ts --grep "publishes resolved .* status within the batching window" > baseline-regressions.log 2>&1
+          result=$?
+          set -e
+          test "$result" -ne 0
+          grep -q "2 failing" baseline-regressions.log
+          node out/vs/platform/agentHost/test/node/attentionStatus.experiment.js > before-experiment.log 2>&1
+          node test/unit/browser/index.js --run src/vs/workbench/contrib/chat/test/browser/agentSessions/agentSessionsControl.test.ts --browser chromium --grep "attention status screenshot experiment" --tfs attention-before
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        if: always()
+        with:
+          name: attention-status-evidence
+          path: |
+            screenshots
+            test-results
+            tests.log
+            typecheck.log
+            lint.log
+            baseline-regressions.log
+            before-experiment.log
+            after-experiment.log
+          retention-days: 30
+          if-no-files-found: error

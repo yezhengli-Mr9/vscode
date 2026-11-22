@@ -359,6 +359,13 @@ async function runTestsInBrowser(testModules, browserType, browserChannel, grep,
 	const browser = await playwright[browserType].launch({ headless: !Boolean(args.debug), devtools: Boolean(args.debug), channel: browserChannel });
 	const context = await browser.newContext();
 	const page = await context.newPage();
+	const attentionPhase = process.env.ATTENTION_PHASE;
+	if (attentionPhase) {
+		if (!['before', 'after'].includes(attentionPhase)) {
+			throw new Error('Invalid attention experiment phase');
+		}
+		await page.setViewportSize({ width: 800, height: 500 });
+	}
 	const target = new URL(server.url + '/test/unit/browser/renderer.html');
 	target.searchParams.set('baseUrl', url.pathToFileURL(path.join(rootDir, 'src')).toString());
 	if (args.build) {
@@ -387,6 +394,20 @@ async function runTestsInBrowser(testModules, browserType, browserChannel, grep,
 	}
 
 	await page.goto(target.href);
+	if (attentionPhase) {
+		const trace = await fs.promises.readFile(path.join(rootDir, 'screenshots', `${attentionPhase}-trace.json`), 'utf8');
+		await page.evaluate(value => document.body.dataset.attentionTrace = value, trace);
+		for (const stylesheet of [
+			'node_modules/@vscode/codicons/dist/codicon.css',
+			'src/vs/base/browser/ui/actionbar/actionbar.css',
+			'src/vs/base/browser/ui/list/list.css',
+			'src/vs/base/browser/ui/tree/media/tree.css',
+			'src/vs/workbench/browser/media/style.css',
+			'src/vs/workbench/contrib/chat/browser/agentSessions/media/agentsessionsviewer.css',
+		]) {
+			await page.addStyleTag({ url: `${server.url}/${stylesheet}` });
+		}
+	}
 
 	if (args.build) {
 		const nlsMessages = await fs.promises.readFile(path.join(out, 'nls.messages.json'), 'utf8');
@@ -400,6 +421,17 @@ async function runTestsInBrowser(testModules, browserType, browserChannel, grep,
 	}
 
 	page.on('console', async msg => {
+		if (attentionPhase && msg.text().startsWith('ATTENTION_SCREENSHOT:')) {
+			const state = msg.text().slice('ATTENTION_SCREENSHOT:'.length);
+			if (!['pending', 'answered-while-busy'].includes(state)) {
+				throw new Error('Invalid attention screenshot state');
+			}
+			await page.locator('[data-screenshot-fixture="attention"]').screenshot({
+				path: path.join(rootDir, 'screenshots', `${attentionPhase}-${state}.png`), animations: 'disabled',
+			});
+			await page.evaluate(() => document.dispatchEvent(new Event('attention-screenshot-complete')));
+			return;
+		}
 		consoleLogFn(msg)(msg.text(), await Promise.all(msg.args().map(async arg => await arg.jsonValue())));
 	});
 

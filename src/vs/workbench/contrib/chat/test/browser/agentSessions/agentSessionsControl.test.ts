@@ -25,6 +25,9 @@ import { CancellationToken } from '../../../../../../base/common/cancellation.js
 import { AgentSessionsGrouping } from '../../../browser/agentSessions/agentSessionsFilter.js';
 import { toDisposable } from '../../../../../../base/common/lifecycle.js';
 import { MockChatSessionsService } from '../../common/mockChatSessionsService.js';
+import { SessionStatus } from '../../../../../../platform/agentHost/common/state/sessionState.js';
+import { ColorThemeData } from '../../../../../services/themes/common/colorThemeData.js';
+import { generateColorThemeCSS } from '../../../../../services/themes/browser/colorThemeCss.js';
 
 suite('AgentSessionsControl', () => {
 
@@ -59,6 +62,66 @@ suite('AgentSessionsControl', () => {
 			reset: () => { },
 		};
 	}
+
+	test('attention status screenshot experiment', async () => {
+		const raw = document.body.dataset.attentionTrace;
+		assert.ok(raw);
+		const trace: { phase: string; snapshots: { state: string; sessions: { resource: string; title: string; displayedStatus: SessionStatus }[] }[] } = JSON.parse(raw);
+		const sessions: IAgentSession[] = [];
+		const model: IAgentSessionsModel = {
+			sessions, resolved: true, getSession: resource => sessions.find(session => session.resource.toString() === resource.toString()),
+			observeSession: () => { throw new Error('Not used by this fixture'); },
+			onWillResolve: Event.None, onDidResolve: Event.None, onDidChangeSessions: Event.None, onDidChangeSessionArchivedState: Event.None,
+			resolve: async () => { },
+		};
+		const instantiation = workbenchInstantiationService(undefined, store);
+		instantiation.stub(IChatSessionsService, new class extends MockChatSessionsService {
+			override getChatSessionContribution() { return undefined; }
+			override resolveChatSessionItem = async () => undefined;
+		});
+		instantiation.stub(IVoicePlaybackService, new class extends mock<IVoicePlaybackService>() {
+			override readonly pendingResponseVersion = observableValue(this, 0);
+			override hasPendingResponse = () => false;
+		});
+		instantiation.stub(IAgentSessionsService, new class extends mock<IAgentSessionsService>() {
+			override readonly model = model;
+			override readonly onDidChangeSessionArchivedState = Event.None;
+			override getSession = (resource: URI) => model.getSession(resource);
+		});
+		const frame = document.body.appendChild(document.createElement('div'));
+		frame.className = 'monaco-workbench linux vs-dark';
+		frame.dataset.screenshotFixture = 'attention';
+		frame.style.cssText = 'width: 580px; height: 260px; background-color: var(--vscode-sideBar-background);';
+		store.add(toDisposable(() => frame.remove()));
+		frame.appendChild(document.createElement('style')).textContent = generateColorThemeCSS(ColorThemeData.createUnloadedTheme('vs-dark'), '.monaco-workbench').code;
+		const control = store.add(instantiation.createInstance(AgentSessionsControl, frame, {
+			overrideStyles: {}, filter: createFilter(), source: 'test', createNewChat: () => { },
+			getHoverPosition: () => HoverPosition.BELOW, trackActiveEditorSession: () => false,
+		}));
+		await timeout(0);
+		control.layout(580, 260);
+		for (const snapshot of trace.snapshots) {
+			sessions.splice(0, sessions.length, ...snapshot.sessions.map(session => ({
+				...createSession(URI.parse(session.resource), session.title),
+				status: (session.displayedStatus & SessionStatus.InputNeeded) === SessionStatus.InputNeeded ? ChatSessionStatus.NeedsInput : ChatSessionStatus.InProgress,
+				timing: { created: Date.now(), lastRequestStarted: undefined, lastRequestEnded: undefined },
+			})));
+			await control.update();
+			await timeout(0);
+			const expectedAttention = snapshot.sessions.filter(session => (session.displayedStatus & SessionStatus.InputNeeded) === SessionStatus.InputNeeded).length;
+			assert.strictEqual(frame.querySelectorAll('.agent-session-icon.needs-input').length, expectedAttention);
+			await new Promise<void>((resolve, reject) => {
+				const ownerWindow = frame.ownerDocument.defaultView!;
+				const listener = () => { ownerWindow.clearTimeout(timer); resolve(); };
+				const timer = ownerWindow.setTimeout(() => {
+					document.removeEventListener('attention-screenshot-complete', listener);
+					reject(new Error('Attention screenshot capture timed out'));
+				}, 30_000);
+				document.addEventListener('attention-screenshot-complete', listener, { once: true });
+				console.log(`ATTENTION_SCREENSHOT:${snapshot.state}`);
+			});
+		}
+	});
 
 	for (const { filtered, initiallyVisible } of [
 		{ filtered: false, initiallyVisible: true },
