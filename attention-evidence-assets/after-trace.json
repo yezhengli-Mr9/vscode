@@ -1,0 +1,77 @@
+{
+  "phase": "after",
+  "statusEvents": [
+    {
+      "resource": "copilot:/approval",
+      "elapsed": 100,
+      "status": 8
+    },
+    {
+      "resource": "copilot:/question",
+      "elapsed": 100,
+      "status": 8
+    }
+  ],
+  "snapshots": [
+    {
+      "state": "pending",
+      "elapsed": 0,
+      "sessions": [
+        {
+          "resource": "copilot:/approval",
+          "title": "Tool approval experiment",
+          "displayedStatus": 24,
+          "actualStatus": 24
+        },
+        {
+          "resource": "copilot:/question",
+          "title": "Answered question experiment",
+          "displayedStatus": 24,
+          "actualStatus": 24
+        },
+        {
+          "resource": "copilot:/genuine",
+          "title": "Unanswered question (control)",
+          "displayedStatus": 24,
+          "actualStatus": 24
+        },
+        {
+          "resource": "copilot:/busy",
+          "title": "Continuous background activity",
+          "displayedStatus": 8,
+          "actualStatus": 8
+        }
+      ]
+    },
+    {
+      "state": "answered-while-busy",
+      "elapsed": 808,
+      "sessions": [
+        {
+          "resource": "copilot:/approval",
+          "title": "Tool approval experiment",
+          "displayedStatus": 8,
+          "actualStatus": 8
+        },
+        {
+          "resource": "copilot:/question",
+          "title": "Answered question experiment",
+          "displayedStatus": 8,
+          "actualStatus": 8
+        },
+        {
+          "resource": "copilot:/genuine",
+          "title": "Unanswered question (control)",
+          "displayedStatus": 24,
+          "actualStatus": 24
+        },
+        {
+          "resource": "copilot:/busy",
+          "title": "Continuous background activity",
+          "displayedStatus": 8,
+          "actualStatus": 8
+        }
+      ]
+    }
+  ]
+}
