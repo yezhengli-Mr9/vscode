@@ -249,29 +249,48 @@ suite('AgentHostModePicker', () => {
 	});
 
 	test('Allow all screenshot fixture', async (): Promise<void> => {
-		const rig = setup();
-		const frame: HTMLElement = dom.append(document.body, dom.$('.monaco-workbench.agent-sessions-workbench.linux.vs-dark'));
-		frame.dataset.screenshotFixture = 'allow-all';
-		const targetWindow: Window = dom.getWindow(frame);
-		frame.style.width = '760px';
-		frame.style.padding = '16px';
-		const themeStyle: HTMLStyleElement = document.createElement('style');
-		frame.appendChild(themeStyle);
-		themeStyle.textContent = generateColorThemeCSS(ColorThemeData.createUnloadedTheme('vs-dark'), '.monaco-workbench').code;
-		frame.appendChild(rig.trigger.parentElement!);
-		store.add({ dispose: () => frame.remove() });
-		await new Promise<void>((resolve, reject) => {
-			const listener = (): void => {
-				targetWindow.clearTimeout(timer);
-				resolve();
-			};
-			const timer: number = targetWindow.setTimeout(() => {
-				document.removeEventListener('allow-all-screenshot-complete', listener);
-				reject(new Error('Allow all screenshot capture timed out'));
-			}, 30_000);
-			document.addEventListener('allow-all-screenshot-complete', listener, { once: true });
-			console.log('ALLOW_ALL_SCREENSHOT:visible');
-		});
+		for (const state of ['expanded', 'compact', 'policy', 'selected']) {
+			const rig = setup(true, true, state === 'policy');
+			const frame: HTMLElement = dom.append(document.body, dom.$('.monaco-workbench.agent-sessions-workbench.linux.vs-dark'));
+			frame.dataset.screenshotFixture = 'allow-all';
+			const targetWindow: Window = dom.getWindow(frame);
+			frame.style.width = '360px';
+			frame.style.padding = '16px';
+			const themeStyle: HTMLStyleElement = document.createElement('style');
+			frame.appendChild(themeStyle);
+			themeStyle.textContent = generateColorThemeCSS(ColorThemeData.createUnloadedTheme('vs-dark'), '.monaco-workbench').code;
+			const host = dom.append(frame, dom.$('.new-chat-widget-container.revealed.experimental-new-session-composer'));
+			const toolbar = dom.append(host, dom.$('.sessions-chat-toolbar'));
+			const controls = dom.append(toolbar, dom.$('.sessions-chat-config-toolbar.new-chat-session-controls'));
+			const actions = dom.append(dom.append(controls, dom.$('.monaco-action-bar')), dom.$('ul.actions-container'));
+			const item = dom.append(actions, dom.$('li.action-item'));
+			rig.picker.render(item);
+			store.add({ dispose: () => frame.remove() });
+			if (state === 'compact') {
+				item.classList.add('compact-picker');
+			}
+			if (state === 'selected') {
+				rig.config.values.autoApprove = 'autoApprove';
+				rig.configChanged.fire('test-session');
+			}
+			await timeout(0);
+			const shortcut = item.querySelector<HTMLElement>('.chat-input-permission-shortcut')!;
+			assert.strictEqual(targetWindow.getComputedStyle(shortcut).display === 'none', state === 'compact');
+			assert.strictEqual(shortcut.ariaDisabled, state === 'policy' || state === 'selected' ? 'true' : 'false');
+			await new Promise<void>((resolve, reject) => {
+				const listener = (): void => {
+					targetWindow.clearTimeout(timer);
+					resolve();
+				};
+				const timer: number = targetWindow.setTimeout(() => {
+					document.removeEventListener('allow-all-screenshot-complete', listener);
+					reject(new Error('Allow all screenshot capture timed out'));
+				}, 30_000);
+				document.addEventListener('allow-all-screenshot-complete', listener, { once: true });
+				console.log(`ALLOW_ALL_SCREENSHOT:${state}`);
+			});
+			frame.remove();
+		}
 	});
 
 	test('updates the sandbox toggle, icon, and accessible label while Dev Container availability is pending', async () => {

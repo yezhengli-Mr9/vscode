@@ -3,7 +3,7 @@ name: Allow all feedback validation
 on:
   push:
     branches:
-      - experiment/allow-all-feedback-20261122
+      - experiment/allow-all-evidence-20261122
 
 permissions:
   contents: read
@@ -58,6 +58,8 @@ jobs:
         id: csslint
         continue-on-error: true
         run: node build/stylelint.ts src/vs/workbench/contrib/chat/browser/widget/input/media/chatInputPicker.css > csslint.log 2>&1
+      - name: Check review-fix hygiene
+        run: git diff --name-only 6bb7a159^ 6bb7a159 | xargs -r node build/hygiene.ts
       - name: Validate permission controls
         id: permissiontests
         continue-on-error: true

@@ -421,10 +421,14 @@ async function runTestsInBrowser(testModules, browserType, browserChannel, grep,
 	}
 
 	page.on('console', async msg => {
-		if (process.env.VSCODE_AUTOMATION_SCREENSHOT_PHASE && msg.text() === 'ALLOW_ALL_SCREENSHOT:visible') {
+		if (process.env.VSCODE_AUTOMATION_SCREENSHOT_PHASE && msg.text().startsWith('ALLOW_ALL_SCREENSHOT:')) {
+			const state = msg.text().slice('ALLOW_ALL_SCREENSHOT:'.length);
+			if (!['expanded', 'compact', 'policy', 'selected'].includes(state)) {
+				throw new Error(`Unknown Allow all screenshot state: ${state}`);
+			}
 			await fs.promises.mkdir(path.join(rootDir, 'screenshots'), { recursive: true });
 			await page.locator('[data-screenshot-fixture="allow-all"]').screenshot({
-				path: path.join(rootDir, 'screenshots', 'allow-all.png'),
+				path: path.join(rootDir, 'screenshots', `allow-all-${state}.png`),
 				animations: 'disabled',
 			});
 			await page.evaluate(() => document.dispatchEvent(new Event('allow-all-screenshot-complete')));
