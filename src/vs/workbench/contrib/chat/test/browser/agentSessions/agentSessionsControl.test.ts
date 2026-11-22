@@ -65,21 +65,27 @@ suite('AgentSessionsControl', () => {
 	test('stacked session visibility screenshot experiment', async () => {
 		const phase = document.body.dataset.chatVisibilityPhase;
 		assert.ok(phase === 'before' || phase === 'after', 'Run with VSCODE_CHAT_VISIBILITY_SCREENSHOT_PHASE');
+		const now = Date.now();
+		const oneDay = 24 * 60 * 60 * 1000;
 		let pinnedStatus = ChatSessionStatus.Completed;
 		const pinned: IAgentSession = {
 			...createSession(URI.parse('test:/pinned'), 'Pinned review'),
+			timing: { created: now - 2 * oneDay, lastRequestStarted: undefined, lastRequestEnded: undefined },
 			isPinned: () => true,
 			get status() { return pinnedStatus; },
 		};
 		const approvals = Array.from({ length: 4 }, (_, index) => ({
 			...createSession(URI.parse(`test:/approval-${index}`), `Approval ${index + 1} awaiting input`),
 			status: ChatSessionStatus.NeedsInput,
-			timing: { created: 10 - index, lastRequestStarted: undefined, lastRequestEnded: undefined },
+			timing: { created: now - oneDay - index * 60_000, lastRequestStarted: undefined, lastRequestEnded: undefined },
 		}));
-		const running = { ...createSession(URI.parse('test:/running'), 'Long-running task'), status: ChatSessionStatus.InProgress };
+		const running = {
+			...createSession(URI.parse('test:/running'), 'Long-running task'), status: ChatSessionStatus.InProgress,
+			timing: { created: now - oneDay, lastRequestStarted: undefined, lastRequestEnded: undefined },
+		};
 		const history = Array.from({ length: 5 }, (_, index) => ({
 			...createSession(URI.parse(`test:/history-${index}`), `Completed history ${index + 1}`),
-			timing: { created: 100 - index, lastRequestStarted: undefined, lastRequestEnded: undefined },
+			timing: { created: now - index * 3_600_000, lastRequestStarted: undefined, lastRequestEnded: undefined },
 		}));
 		const sessions: IAgentSession[] = [pinned, ...approvals, running, ...history];
 		const model: IAgentSessionsModel = {
@@ -105,9 +111,9 @@ suite('AgentSessionsControl', () => {
 			override getSession = (resource: URI) => model.getSession(resource);
 		});
 		const frame = document.body.appendChild(document.createElement('div'));
-		frame.className = 'monaco-workbench vs-dark';
+		frame.className = 'monaco-workbench linux vs-dark';
 		frame.dataset.screenshotFixture = 'chat-visibility';
-		frame.style.cssText = 'width: 580px; height: 540px;';
+		frame.style.cssText = 'width: 580px; height: 540px; background-color: var(--vscode-sideBar-background);';
 		store.add(toDisposable(() => frame.remove()));
 		const themeStyle = frame.appendChild(document.createElement('style'));
 		themeStyle.textContent = generateColorThemeCSS(ColorThemeData.createUnloadedTheme('vs-dark'), '.monaco-workbench').code;
