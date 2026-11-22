@@ -1,9 +1,9 @@
-name: Automation UI build experiment
+name: Allow all feedback validation
 
 on:
   push:
     branches:
-      - experiment/automation-ui-build-20261122
+      - experiment/allow-all-feedback-20261122
 
 permissions:
   contents: read
@@ -40,13 +40,6 @@ jobs:
         run: pnpm run build-fast --client-only
       - name: Install test browser
         run: pnpm exec playwright install --with-deps chromium
-      - name: Run selected automation browser regressions
-        run: >-
-          node test/unit/browser/index.js
-          --run src/vs/sessions/contrib/sessions/test/browser/automationsView.test.ts
-          --browser chromium
-          --grep "automation history surfaces older|automation history leaves Needs Attention|automation prompt regrouping|history keeps older active"
-          --tfs automation-feedback
       - name: Typecheck source
         id: typecheck
         continue-on-error: true
@@ -57,45 +50,40 @@ jobs:
         id: lint
         continue-on-error: true
         run: |
-          git diff --name-only 733a99842b0e0e14c3593dfab31fff2035478ba0 -- src/vs/workbench | grep '\.ts$' | xargs pnpm run oxlint > lint.log 2>&1
-          pnpm run stylelint src/vs/workbench/contrib/chat/browser/widget/input/media/chatInputPicker.css >> lint.log 2>&1
+          git fetch --depth=1 origin 733a99842b0e0e14c3593dfab31fff2035478ba0
+          git diff --name-only 733a99842b0e0e14c3593dfab31fff2035478ba0 -- src/vs/workbench | grep '\.ts$' | xargs -r node build/oxlint.ts > lint.log 2>&1
+      - name: Lint permission CSS
+        id: csslint
+        continue-on-error: true
+        run: node build/stylelint.ts src/vs/workbench/contrib/chat/browser/widget/input/media/chatInputPicker.css > csslint.log 2>&1
       - name: Validate permission controls
         id: permissiontests
         continue-on-error: true
+        env:
+          VSCODE_AUTOMATION_SCREENSHOT_PHASE: after
         run: |
           printf '%s\n' \
             src/vs/workbench/contrib/chat/test/browser/widget/input/permissionPickerActionItem.test.ts \
             src/vs/workbench/contrib/chat/test/browser/agentSessions/agentHostChatInputPicker.test.ts \
             src/vs/workbench/contrib/sessions/providers/agentHost/test/browser/agentHostModePicker.test.ts > permission-tests.txt
-          node test/unit/browser/index.js --runList permission-tests.txt --browser chromium --grep "Allow all shortcut|PermissionPickerActionItem|policy|warning|read.only|cloud drafts reuse" --tfs allow-all
-      - name: Capture upstream UI before the fix
-        env:
-          VSCODE_AUTOMATION_SCREENSHOT_PHASE: before
-        run: |
-          git fetch --depth=1 origin 733a99842b0e0e14c3593dfab31fff2035478ba0
-          git restore --source=733a99842b0e0e14c3593dfab31fff2035478ba0 -- src/vs/sessions/contrib/automations/browser/automationRunHistory.ts
-          pnpm run build-fast --client-only
-          node test/unit/browser/index.js --run src/vs/sessions/contrib/sessions/test/browser/automationsView.test.ts --browser chromium --grep "automation history screenshot fixture" --tfs screenshots-before
-      - name: Capture patched UI
+          node test/unit/browser/index.js --runList permission-tests.txt --browser chromium --grep "Allow all shortcut|PermissionPickerActionItem|policy|warning|read.only|cloud drafts reuse|split controls have symmetric padding" --tfs allow-all
+      - name: Capture patched permission widget
+        id: screenshot
+        continue-on-error: true
         env:
           VSCODE_AUTOMATION_SCREENSHOT_PHASE: after
         run: |
-          git restore --source=HEAD -- src/vs/sessions/contrib/automations/browser/automationRunHistory.ts
-          pnpm run build-fast --client-only
-          node test/unit/browser/index.js --run src/vs/sessions/contrib/sessions/test/browser/automationsView.test.ts --browser chromium --grep "automation history screenshot fixture" --tfs screenshots-after
           node test/unit/browser/index.js --run src/vs/workbench/contrib/sessions/providers/agentHost/test/browser/agentHostModePicker.test.ts --browser chromium --grep "Allow all screenshot fixture" --tfs allow-all-screenshot
-      - name: Save client output
-        run: tar -czf client-output.tar.gz out
       - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
         if: always()
         with:
-          name: automation-ui-build-experiment
+          name: allow-all-feedback-validation
           path: |
             test-results
-            client-output.tar.gz
             screenshots
             typecheck.log
             lint.log
+            csslint.log
           retention-days: 7
           if-no-files-found: warn
       - name: Require validation success
@@ -103,4 +91,6 @@ jobs:
         run: |
           test "${{ steps.typecheck.outcome }}" = success
           test "${{ steps.lint.outcome }}" = success
+          test "${{ steps.csslint.outcome }}" = success
           test "${{ steps.permissiontests.outcome }}" = success
+          test "${{ steps.screenshot.outcome }}" = success
