@@ -11,7 +11,7 @@ permissions:
 jobs:
   client-build:
     runs-on: ubuntu-24.04
-    timeout-minutes: 25
+    timeout-minutes: 20
     env:
       PNPM_CONFIG_REGISTRY: https://registry.npmjs.org/
       PNPM_CONFIG_FROZEN_LOCKFILE: "true"
@@ -33,7 +33,7 @@ jobs:
       - name: Restore public dependencies
         run: |
           sudo apt-get update
-          sudo apt-get install -y --no-install-recommends libkrb5-dev
+          sudo apt-get install -y --no-install-recommends libkrb5-dev libx11-dev libxkbfile-dev
           pnpm install --frozen-lockfile --registry https://registry.npmjs.org/
       - name: Build client
         run: pnpm run build-fast --client-only
