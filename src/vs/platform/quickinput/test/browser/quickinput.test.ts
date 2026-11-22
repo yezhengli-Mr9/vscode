@@ -46,6 +46,16 @@ import { NullHoverService } from '../../../hover/test/browser/nullHoverService.j
 import { IOpenerService } from '../../../opener/common/opener.js';
 import { getListStyles } from '../../../theme/browser/defaultStyles.js';
 import { quickInputListFocusBackground, quickInputListFocusForeground, quickInputListFocusIconForeground } from '../../../theme/common/colorRegistry.js';
+import { constObservable } from '../../../../base/common/observable.js';
+import { URI } from '../../../../base/common/uri.js';
+import { upcastPartial } from '../../../../base/test/common/mock.js';
+import { INotificationService } from '../../../notification/common/notification.js';
+import { TestNotificationService } from '../../../notification/test/common/testNotificationService.js';
+import { IProgressService } from '../../../progress/common/progress.js';
+import { IQuickInputService } from '../../common/quickInput.js';
+import { ChatInteractivity, IChat, ISession, ISessionWorkspace, SessionStatus } from '../../../../workbench/services/sessions/common/session.js';
+import { SendInstructionToChatsAction } from '../../../../workbench/contrib/sessions/browser/sessionsBroadcast.js';
+import { ISessionsManagementService } from '../../../../workbench/contrib/sessions/common/sessionsManagement.js';
 
 // Sets up an `onShow` listener to allow us to wait until the quick pick is shown (useful when triggering an `accept()` right after launching a quick pick)
 // kick this off before you launch the picker and then await the promise returned after you launch the picker.
@@ -163,6 +173,78 @@ suite('QuickInput', () => { // https://github.com/microsoft/vscode/issues/147543
 
 	teardown(() => {
 		sinon.restore();
+	});
+
+	test('shared instruction native UI experiment', async function () {
+		this.timeout(30000);
+		fixture.dataset.screenshotFixture = 'shared-instruction';
+		fixture.style.cssText = 'position:relative;width:1000px;height:650px;background:#f8f8f8;color:#3b3b3b;font:13px system-ui;';
+		instantiationService.stub(ILayoutService, {
+			activeContainer: fixture,
+			activeContainerDimension: { width: 1000, height: 650 },
+			activeContainerOffset: { top: 0, quickPickTop: 20 },
+			onDidLayoutContainer: Event.None,
+			onDidLayoutActiveContainer: Event.None,
+			onDidChangeActiveContainer: Event.None,
+			getContainer: () => fixture,
+			focus() { },
+		});
+		instantiationService.stub(IHoverService, NullHoverService);
+		instantiationService.stub(IOpenerService, { open: async () => true });
+		for (const [id, value] of Object.entries({
+			'quickInput-background': '#f8f8f8',
+			'quickInput-foreground': '#3b3b3b',
+			'quickInputList-focusBackground': '#005fb8',
+			'quickInputList-focusForeground': '#ffffff',
+			'list-activeSelectionBackground': '#e8e8e8',
+			'list-activeSelectionForeground': '#000000',
+			'list-inactiveSelectionBackground': '#e8e8e8',
+			'list-inactiveSelectionForeground': '#000000',
+		})) {
+			fixture.style.setProperty(`--vscode-${id}`, value);
+		}
+		const service = store.add(instantiationService.createInstance(QuickInputService));
+		instantiationService.stub(IQuickInputService, service);
+		instantiationService.stub(INotificationService, new TestNotificationService());
+		instantiationService.stub(IProgressService, {
+			withProgress: (_options, task) => task({ report: () => { } }),
+		});
+		const makeChat = (id: string, title: string) => upcastPartial<IChat>({
+			resource: URI.parse(`test-chat:/${id}`), title: constObservable(title),
+			status: constObservable(SessionStatus.Completed), isArchived: constObservable(false),
+			interactivity: constObservable(ChatInteractivity.Full),
+			workspace: constObservable(upcastPartial<ISessionWorkspace>({ label: 'Shared instruction sandbox', folders: [] })),
+		});
+		const main = makeChat('main', 'Review implementation');
+		const nested = makeChat('nested', 'Run regression tests');
+		const untouched = makeChat('untouched', 'Unselected documentation chat');
+		const run = makeChat('run', 'Nightly automation run');
+		const makeSession = (id: string, title: string, chats: IChat[], automation: boolean) => upcastPartial<ISession>({
+			sessionId: id, resource: URI.parse(`test-session:/${id}`), title: constObservable(title),
+			mainChat: constObservable(chats[0]), chats: constObservable(chats),
+			status: constObservable(SessionStatus.Completed), isArchived: constObservable(false),
+			isAutomation: constObservable(automation),
+		});
+		const sessions = [
+			makeSession('ordinary', 'Agent session', [main, nested, untouched], false),
+			makeSession('automation', 'Nightly checks', [run], true),
+		];
+		const sent: { chat: string; query: string }[] = [];
+		instantiationService.stub(ISessionsManagementService, {
+			getSessions: () => sessions,
+			getSession: resource => sessions.find(session => session.resource.toString() === resource.toString()),
+			sendRequestInBackground: async (_session, chat, options) => { sent.push({ chat: chat.title.get(), query: options.query }); },
+		});
+		store.add(service.onShow(async () => {
+			await timeout(0);
+			console.log(`BROADCAST_SCREENSHOT:${service.currentQuickInput?.type === QuickInputType.QuickPick ? 'selection' : 'instruction'}`);
+		}));
+		store.add(addDisposableListener(document, 'broadcast-experiment-accept', () => service.accept()));
+		await instantiationService.invokeFunction(accessor => new SendInstructionToChatsAction().run(accessor));
+		assert.deepStrictEqual(sent, [main, nested, run].map(chat => ({
+			chat: chat.title.get(), query: 'Run the focused tests and summarize failures.',
+		})));
+		console.log('BROADCAST_EXPERIMENT_RESULT:3 selected chats received identical text; unselected chat received nothing');
 	});
 
 	test('Quick Input service keeps selected tree rows in the picker palette while keyboard focus moves', () => {

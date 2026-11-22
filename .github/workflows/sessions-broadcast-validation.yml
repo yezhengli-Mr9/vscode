@@ -60,7 +60,7 @@ jobs:
         env:
           VSCODE_BROADCAST_EXPERIMENT: "1"
         run: |
-          node test/unit/browser/index.js --run src/vs/platform/quickinput/test/browser/quickInput.test.ts --browser chromium --grep "shared instruction native UI experiment" --tfs shared-instruction-ui
+          node test/unit/browser/index.js --run src/vs/platform/quickinput/test/browser/quickinput.test.ts --browser chromium --grep "shared instruction native UI experiment" --tfs shared-instruction-ui
       - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
         if: always()
         with:
