@@ -2986,6 +2986,7 @@ suite('AutomationsCardsWidget', () => {
 		document.body.appendChild(frame);
 		frame.appendChild(widget.element);
 		disposables.add({ dispose: () => frame.remove() });
+		const targetWindow: Window = getWindow(frame);
 		const themeStyle: HTMLStyleElement = document.createElement('style');
 		themeStyle.textContent = generateColorThemeCSS(ColorThemeData.createUnloadedTheme('vs-dark'), '.monaco-workbench').code;
 		frame.appendChild(themeStyle);
@@ -3006,10 +3007,10 @@ suite('AutomationsCardsWidget', () => {
 		const capture = (state: 'pending' | 'resumed'): Promise<void> => new Promise<void>((resolve, reject) => {
 			widget.layout(760, 1100);
 			const listener = (): void => {
-				window.clearTimeout(timer);
+				targetWindow.clearTimeout(timer);
 				resolve();
 			};
-			const timer: number = window.setTimeout(() => {
+			const timer: number = targetWindow.setTimeout(() => {
 				document.removeEventListener('automation-screenshot-complete', listener);
 				reject(new Error('Automation screenshot capture timed out'));
 			}, 30_000);

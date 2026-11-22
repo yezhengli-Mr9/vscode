@@ -250,6 +250,7 @@ suite('AgentHostModePicker', () => {
 		const rig = setup();
 		const frame: HTMLElement = dom.append(document.body, dom.$('.monaco-workbench.agent-sessions-workbench.linux.vs-dark'));
 		frame.dataset.screenshotFixture = 'allow-all';
+		const targetWindow: Window = dom.getWindow(frame);
 		frame.style.width = '760px';
 		frame.style.padding = '16px';
 		const themeStyle: HTMLStyleElement = document.createElement('style');
@@ -259,10 +260,10 @@ suite('AgentHostModePicker', () => {
 		store.add({ dispose: () => frame.remove() });
 		await new Promise<void>((resolve, reject) => {
 			const listener = (): void => {
-				window.clearTimeout(timer);
+				targetWindow.clearTimeout(timer);
 				resolve();
 			};
-			const timer: number = window.setTimeout(() => {
+			const timer: number = targetWindow.setTimeout(() => {
 				document.removeEventListener('allow-all-screenshot-complete', listener);
 				reject(new Error('Allow all screenshot capture timed out'));
 			}, 30_000);
