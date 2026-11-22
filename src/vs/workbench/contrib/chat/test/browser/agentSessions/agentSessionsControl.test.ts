@@ -25,6 +25,7 @@ import { CancellationToken } from '../../../../../../base/common/cancellation.js
 import { AgentSessionsGrouping } from '../../../browser/agentSessions/agentSessionsFilter.js';
 import { toDisposable } from '../../../../../../base/common/lifecycle.js';
 import { MockChatSessionsService } from '../../common/mockChatSessionsService.js';
+import { ColorThemeData, generateColorThemeCSS } from '../../../../../services/themes/browser/colorThemeData.js';
 
 suite('AgentSessionsControl', () => {
 
@@ -59,6 +60,93 @@ suite('AgentSessionsControl', () => {
 			reset: () => { },
 		};
 	}
+
+	test('stacked session visibility screenshot experiment', async () => {
+		const phase = document.body.dataset.chatVisibilityPhase;
+		assert.ok(phase === 'before' || phase === 'after', 'Run with VSCODE_CHAT_VISIBILITY_SCREENSHOT_PHASE');
+		let pinnedStatus = ChatSessionStatus.Completed;
+		const pinned: IAgentSession = {
+			...createSession(URI.parse('test:/pinned'), 'Pinned review'),
+			isPinned: () => true,
+			get status() { return pinnedStatus; },
+		};
+		const approvals = Array.from({ length: 4 }, (_, index) => ({
+			...createSession(URI.parse(`test:/approval-${index}`), `Approval ${index + 1} awaiting input`),
+			status: ChatSessionStatus.NeedsInput,
+			timing: { created: 10 - index, lastRequestStarted: undefined, lastRequestEnded: undefined },
+		}));
+		const running = { ...createSession(URI.parse('test:/running'), 'Long-running task'), status: ChatSessionStatus.InProgress };
+		const history = Array.from({ length: 5 }, (_, index) => ({
+			...createSession(URI.parse(`test:/history-${index}`), `Completed history ${index + 1}`),
+			timing: { created: 100 - index, lastRequestStarted: undefined, lastRequestEnded: undefined },
+		}));
+		const sessions: IAgentSession[] = [pinned, ...approvals, running, ...history];
+		const model: IAgentSessionsModel = {
+			sessions, resolved: true,
+			getSession: resource => sessions.find(session => session.resource.toString() === resource.toString()),
+			observeSession: () => { throw new Error('Not implemented'); },
+			onWillResolve: Event.None, onDidResolve: Event.None,
+			onDidChangeSessions: Event.None, onDidChangeSessionArchivedState: Event.None,
+			resolve: async () => { },
+		};
+		const instantiation = workbenchInstantiationService(undefined, store);
+		instantiation.stub(IChatSessionsService, new class extends MockChatSessionsService {
+			override getChatSessionContribution() { return undefined; }
+			override resolveChatSessionItem = async () => undefined;
+		});
+		instantiation.stub(IVoicePlaybackService, new class extends mock<IVoicePlaybackService>() {
+			override readonly pendingResponseVersion = observableValue(this, 0);
+			override hasPendingResponse = () => false;
+		});
+		instantiation.stub(IAgentSessionsService, new class extends mock<IAgentSessionsService>() {
+			override readonly model = model;
+			override readonly onDidChangeSessionArchivedState = Event.None;
+			override getSession = (resource: URI) => model.getSession(resource);
+		});
+		const frame = document.body.appendChild(document.createElement('div'));
+		frame.className = 'monaco-workbench vs-dark';
+		frame.dataset.screenshotFixture = 'chat-visibility';
+		frame.style.cssText = 'width: 580px; height: 540px;';
+		store.add(toDisposable(() => frame.remove()));
+		const themeStyle = frame.appendChild(document.createElement('style'));
+		themeStyle.textContent = generateColorThemeCSS(ColorThemeData.createUnloadedTheme('vs-dark'), '.monaco-workbench').code;
+		const control = store.add(instantiation.createInstance(AgentSessionsControl, frame, {
+			overrideStyles: {}, filter: { ...createFilter(), groupResults: () => AgentSessionsGrouping.Capped }, source: 'test',
+			createNewChat: () => { }, getHoverPosition: () => HoverPosition.BELOW,
+			trackActiveEditorSession: () => false,
+		}));
+		await timeout(0);
+		control.layout(580, 540);
+
+		const capture = async (state: string, expected: readonly IAgentSession[]) => {
+			await control.update();
+			await timeout(0);
+			const visible = sessions.filter(session => !!control.getSessionElement(session.resource)).map(session => session.label);
+			assert.deepStrictEqual(visible, expected.map(session => session.label));
+			assert.strictEqual(control.element?.querySelector('.agent-session-section-row')?.getAttribute('aria-expanded'), 'false');
+			await new Promise<void>((resolve, reject) => {
+				const ownerWindow = frame.ownerDocument.defaultView!;
+				const listener = () => {
+					ownerWindow.clearTimeout(timer);
+					resolve();
+				};
+				const timer = ownerWindow.setTimeout(() => {
+					document.removeEventListener('chat-visibility-screenshot-complete', listener);
+					reject(new Error('Chat visibility screenshot capture timed out'));
+				}, 30_000);
+				document.addEventListener('chat-visibility-screenshot-complete', listener, { once: true });
+				console.log(`CHAT_VISIBILITY_SCREENSHOT:${state}`);
+			});
+		};
+		await capture('pending', phase === 'after' ? [pinned, ...approvals, running] : [pinned, ...approvals.slice(0, 3)]);
+		sessions.splice(1, approvals.length + 1);
+		pinnedStatus = ChatSessionStatus.NeedsInput;
+		await capture('pinned-waiting', phase === 'after' ? [pinned] : [pinned, ...history.slice(0, 3)]);
+		pinnedStatus = ChatSessionStatus.InProgress;
+		await capture('pinned-running', phase === 'after' ? [pinned] : [pinned, ...history.slice(0, 3)]);
+		pinnedStatus = ChatSessionStatus.Completed;
+		await capture('resolved', [pinned, ...history.slice(0, 3)]);
+	});
 
 	for (const { filtered, initiallyVisible } of [
 		{ filtered: false, initiallyVisible: true },

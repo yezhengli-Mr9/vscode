@@ -1,0 +1,102 @@
+name: Chat visibility review experiment
+
+on:
+  push:
+    branches:
+      - experiment/chat-visibility-review-20261122
+
+permissions:
+  contents: read
+
+jobs:
+  browser-experiment:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 12
+    env:
+      PNPM_CONFIG_REGISTRY: https://registry.npmjs.org/
+      PNPM_CONFIG_FROZEN_LOCKFILE: "true"
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020
+        with:
+          node-version-file: .nvmrc
+      - uses: pnpm/action-setup@f40ffcd9367d9f12939873eb1018b921a783ffaa
+        with:
+          version: 12.16.0
+          standalone: true
+      - name: Restore browser-build dependencies
+        run: |
+          pnpm install --frozen-lockfile --ignore-scripts --registry https://registry.npmjs.org/
+          pnpm rebuild esbuild
+          node build/npm/electronTypes.ts
+      - name: Build actual client
+        run: pnpm run build-fast --client-only
+      - name: Install Chromium
+        run: pnpm exec playwright install --with-deps chromium
+      - name: Run complete data-source test file
+        run: |
+          node test/unit/browser/index.js --run src/vs/workbench/contrib/chat/test/browser/agentSessions/agentSessionsDataSource.test.ts --browser chromium --tfs chat-data-source
+      - name: Typecheck client
+        env:
+          NODE_OPTIONS: --max-old-space-size=6144
+        run: pnpm run typecheck-client --pretty false > typecheck.log 2>&1
+      - name: Lint PR and screenshot fixture
+        run: |
+          node build/oxlint.ts src/vs/workbench/contrib/chat/browser/agentSessions/agentSessionsViewer.ts src/vs/workbench/contrib/chat/test/browser/agentSessions/agentSessionsDataSource.test.ts src/vs/workbench/contrib/chat/test/browser/agentSessions/agentSessionsControl.test.ts > lint.log 2>&1
+          git diff --check
+      - name: Capture upstream control
+        env:
+          VSCODE_CHAT_VISIBILITY_SCREENSHOT_PHASE: before
+        run: |
+          git fetch --depth=1 origin 733a99842b0e0e14c3593dfab31fff2035478ba0
+          git restore --source=733a99842b0e0e14c3593dfab31fff2035478ba0 -- src/vs/workbench/contrib/chat/browser/agentSessions/agentSessionsViewer.ts
+          pnpm run build-fast --client-only
+          node test/unit/browser/index.js --run src/vs/workbench/contrib/chat/test/browser/agentSessions/agentSessionsControl.test.ts --browser chromium --grep "stacked session visibility screenshot experiment" --tfs chat-before
+      - name: Capture patched control
+        env:
+          VSCODE_CHAT_VISIBILITY_SCREENSHOT_PHASE: after
+        run: |
+          git restore --source=HEAD -- src/vs/workbench/contrib/chat/browser/agentSessions/agentSessionsViewer.ts
+          pnpm run build-fast --client-only
+          node test/unit/browser/index.js --run src/vs/workbench/contrib/chat/test/browser/agentSessions/agentSessionsControl.test.ts --browser chromium --grep "stacked session visibility screenshot experiment" --tfs chat-after
+      - name: Prove pinned-only regression detects a broken active check
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+          p = Path('src/vs/workbench/contrib/chat/browser/agentSessions/agentSessionsViewer.ts')
+          source = p.read_text()
+          original = 'nonArchivedSessions.some((session: IAgentSession): boolean => isSessionInProgressStatus(session.status))'
+          assert source.count(original) == 1
+          p.write_text(source.replace(original, 'activeSessions.length > 0'))
+          PY
+          pnpm run build-fast --client-only
+          set +e
+          node test/unit/browser/index.js --run src/vs/workbench/contrib/chat/test/browser/agentSessions/agentSessionsDataSource.test.ts --browser chromium --grep "capped grouping collapses history when only a pinned session is active" --tfs chat-mutation > mutation.log 2>&1
+          status=$?
+          set -e
+          test "$status" -ne 0
+          python3 - <<'PY'
+          import xml.etree.ElementTree as ET
+          from pathlib import Path
+          paths = list(Path('test-results').rglob('*chat-mutation*.xml'))
+          assert len(paths) == 1, paths
+          cases = ET.parse(paths[0]).findall('.//testcase')
+          assert len(cases) == 2, len(cases)
+          assert all(case.find('failure') is not None for case in cases)
+          print('Both pinned-only regressions reject the unpinned-only active check.')
+          PY
+          git restore --source=HEAD -- src/vs/workbench/contrib/chat/browser/agentSessions/agentSessionsViewer.ts
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        if: always()
+        with:
+          name: chat-visibility-review-evidence
+          path: |
+            screenshots
+            test-results
+            typecheck.log
+            lint.log
+            mutation.log
+          retention-days: 30
+          if-no-files-found: error

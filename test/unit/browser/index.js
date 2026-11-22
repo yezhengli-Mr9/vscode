@@ -359,6 +359,13 @@ async function runTestsInBrowser(testModules, browserType, browserChannel, grep,
 	const browser = await playwright[browserType].launch({ headless: !Boolean(args.debug), devtools: Boolean(args.debug), channel: browserChannel });
 	const context = await browser.newContext();
 	const page = await context.newPage();
+	const screenshotPhase = process.env.VSCODE_CHAT_VISIBILITY_SCREENSHOT_PHASE;
+	if (screenshotPhase) {
+		if (!['before', 'after'].includes(screenshotPhase)) {
+			throw new Error('Invalid chat visibility screenshot phase');
+		}
+		await page.setViewportSize({ width: 800, height: 700 });
+	}
 	const target = new URL(server.url + '/test/unit/browser/renderer.html');
 	target.searchParams.set('baseUrl', url.pathToFileURL(path.join(rootDir, 'src')).toString());
 	if (args.build) {
@@ -387,6 +394,19 @@ async function runTestsInBrowser(testModules, browserType, browserChannel, grep,
 	}
 
 	await page.goto(target.href);
+	if (screenshotPhase) {
+		await page.evaluate(phase => document.body.dataset.chatVisibilityPhase = phase, screenshotPhase);
+		for (const stylesheet of [
+			'node_modules/@vscode/codicons/dist/codicon.css',
+			'src/vs/base/browser/ui/actionbar/actionbar.css',
+			'src/vs/base/browser/ui/list/list.css',
+			'src/vs/base/browser/ui/tree/media/tree.css',
+			'src/vs/workbench/browser/media/style.css',
+			'src/vs/workbench/contrib/chat/browser/agentSessions/media/agentsessionsviewer.css',
+		]) {
+			await page.addStyleTag({ url: `${server.url}/${stylesheet}` });
+		}
+	}
 
 	if (args.build) {
 		const nlsMessages = await fs.promises.readFile(path.join(out, 'nls.messages.json'), 'utf8');
@@ -400,6 +420,19 @@ async function runTestsInBrowser(testModules, browserType, browserChannel, grep,
 	}
 
 	page.on('console', async msg => {
+		if (screenshotPhase && msg.text().startsWith('CHAT_VISIBILITY_SCREENSHOT:')) {
+			const state = msg.text().slice('CHAT_VISIBILITY_SCREENSHOT:'.length);
+			if (!['pending', 'pinned-waiting', 'pinned-running', 'resolved'].includes(state)) {
+				throw new Error('Invalid chat visibility screenshot state');
+			}
+			await fs.promises.mkdir(path.join(rootDir, 'screenshots'), { recursive: true });
+			await page.locator('[data-screenshot-fixture="chat-visibility"]').screenshot({
+				path: path.join(rootDir, 'screenshots', `${screenshotPhase}-${state}.png`),
+				animations: 'disabled',
+			});
+			await page.evaluate(() => document.dispatchEvent(new Event('chat-visibility-screenshot-complete')));
+			return;
+		}
 		consoleLogFn(msg)(msg.text(), await Promise.all(msg.args().map(async arg => await arg.jsonValue())));
 	});
 
