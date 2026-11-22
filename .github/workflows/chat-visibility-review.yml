@@ -40,14 +40,20 @@ jobs:
         run: |
           node test/unit/browser/index.js --run src/vs/workbench/contrib/chat/test/browser/agentSessions/agentSessionsDataSource.test.ts --browser chromium --tfs chat-data-source
       - name: Typecheck client
+        id: typecheck
+        continue-on-error: true
         env:
           NODE_OPTIONS: --max-old-space-size=6144
         run: pnpm run typecheck-client --pretty false > typecheck.log 2>&1
       - name: Lint PR and screenshot fixture
+        id: lint
+        continue-on-error: true
         run: |
           node build/oxlint.ts src/vs/workbench/contrib/chat/browser/agentSessions/agentSessionsViewer.ts src/vs/workbench/contrib/chat/test/browser/agentSessions/agentSessionsDataSource.test.ts src/vs/workbench/contrib/chat/test/browser/agentSessions/agentSessionsControl.test.ts > lint.log 2>&1
           git diff --check
       - name: Capture upstream control
+        id: before
+        continue-on-error: true
         env:
           VSCODE_CHAT_VISIBILITY_SCREENSHOT_PHASE: before
         run: |
@@ -56,6 +62,8 @@ jobs:
           pnpm run build-fast --client-only
           node test/unit/browser/index.js --run src/vs/workbench/contrib/chat/test/browser/agentSessions/agentSessionsControl.test.ts --browser chromium --grep "stacked session visibility screenshot experiment" --tfs chat-before
       - name: Capture patched control
+        id: after
+        continue-on-error: true
         env:
           VSCODE_CHAT_VISIBILITY_SCREENSHOT_PHASE: after
         run: |
@@ -63,6 +71,8 @@ jobs:
           pnpm run build-fast --client-only
           node test/unit/browser/index.js --run src/vs/workbench/contrib/chat/test/browser/agentSessions/agentSessionsControl.test.ts --browser chromium --grep "stacked session visibility screenshot experiment" --tfs chat-after
       - name: Prove pinned-only regression detects a broken active check
+        id: mutation
+        continue-on-error: true
         run: |
           python3 - <<'PY'
           from pathlib import Path
@@ -101,3 +111,11 @@ jobs:
             mutation.log
           retention-days: 30
           if-no-files-found: error
+      - name: Require all validation and captures
+        if: always()
+        run: |
+          test "${{ steps.typecheck.outcome }}" = success
+          test "${{ steps.lint.outcome }}" = success
+          test "${{ steps.before.outcome }}" = success
+          test "${{ steps.after.outcome }}" = success
+          test "${{ steps.mutation.outcome }}" = success

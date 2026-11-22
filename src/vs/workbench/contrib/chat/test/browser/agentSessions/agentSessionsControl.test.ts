@@ -25,7 +25,8 @@ import { CancellationToken } from '../../../../../../base/common/cancellation.js
 import { AgentSessionsGrouping } from '../../../browser/agentSessions/agentSessionsFilter.js';
 import { toDisposable } from '../../../../../../base/common/lifecycle.js';
 import { MockChatSessionsService } from '../../common/mockChatSessionsService.js';
-import { ColorThemeData, generateColorThemeCSS } from '../../../../../services/themes/common/colorThemeData.js';
+import { ColorThemeData } from '../../../../../services/themes/common/colorThemeData.js';
+import { generateColorThemeCSS } from '../../../../../services/themes/browser/colorThemeCss.js';
 
 suite('AgentSessionsControl', () => {
 
