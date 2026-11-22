@@ -37,7 +37,7 @@ const listener = manager.onDidEmitNotification(notification => {
 try {
 	for (const session of sessions) {
 		const now = new Date().toISOString();
-		manager.createSession({ ...session, provider: 'copilot', status: SessionStatus.Idle, createdAt: now, modifiedAt: now });
+		manager.createSession({ ...session, defaultChat: buildDefaultChatUri(session.resource), provider: 'copilot', status: SessionStatus.Idle, createdAt: now, modifiedAt: now });
 		manager.dispatchServerAction(buildDefaultChatUri(session.resource), chatTurnStarted('turn-1', 'Run the controlled experiment'));
 	}
 	const approvalChat = buildDefaultChatUri(sessions[0].resource);
