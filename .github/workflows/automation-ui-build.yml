@@ -11,7 +11,7 @@ permissions:
 jobs:
   client-build:
     runs-on: ubuntu-24.04
-    timeout-minutes: 30
+    timeout-minutes: 25
     env:
       PNPM_CONFIG_REGISTRY: https://registry.npmjs.org/
       PNPM_CONFIG_FROZEN_LOCKFILE: "true"
@@ -31,7 +31,10 @@ jobs:
           node --version
           test "$(pnpm --version)" = "12.16.0"
       - name: Restore public dependencies
-        run: pnpm install --frozen-lockfile --registry https://registry.npmjs.org/
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends libkrb5-dev
+          pnpm install --frozen-lockfile --registry https://registry.npmjs.org/
       - name: Build client
         run: pnpm run build-fast --client-only
       - name: Install test browser
