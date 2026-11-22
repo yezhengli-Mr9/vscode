@@ -29,7 +29,8 @@ jobs:
       - name: Restore browser-build dependencies
         run: |
           pnpm install --frozen-lockfile --ignore-scripts --registry https://registry.npmjs.org/
-          pnpm rebuild esbuild
+          pnpm -C build install --frozen-lockfile --ignore-scripts --registry https://registry.npmjs.org/
+          pnpm -C build rebuild esbuild
           node build/npm/electronTypes.ts
       - name: Build actual client
         run: pnpm run build-fast --client-only
