@@ -1,0 +1,94 @@
+name: Agents input parity validation
+
+on:
+  push:
+    branches:
+      - experiment/agents-input-parity-20261124
+
+permissions:
+  contents: read
+
+jobs:
+  browser-validation:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 12
+    env:
+      PNPM_CONFIG_REGISTRY: https://registry.npmjs.org/
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020
+        with:
+          node-version-file: .nvmrc
+      - uses: pnpm/action-setup@f40ffcd9367d9f12939873eb1018b921a783ffaa
+        with:
+          version: 12.16.0
+          standalone: true
+      - name: Restore browser-build dependencies
+        run: |
+          pnpm install --frozen-lockfile --ignore-scripts --registry https://registry.npmjs.org/
+          pnpm -C build install --frozen-lockfile --ignore-scripts --registry https://registry.npmjs.org/
+          pnpm -C build rebuild esbuild
+          node build/npm/electronTypes.ts
+      - name: Build client
+        run: pnpm run build-fast --client-only
+      - name: Install Chromium
+        run: pnpm exec playwright install --with-deps chromium
+      - name: Typecheck client
+        id: typecheck
+        continue-on-error: true
+        env:
+          NODE_OPTIONS: --max-old-space-size=6144
+        run: pnpm run typecheck-client --pretty false > typecheck.log 2>&1
+      - name: Check scoped hygiene
+        id: hygiene
+        continue-on-error: true
+        run: |
+          node build/hygiene.ts \
+            src/vs/workbench/contrib/chat/browser/agentSessions/agentSessionsViewer.ts \
+            src/vs/workbench/contrib/chat/test/browser/agentSessions/agentSessionsDataSource.test.ts \
+            src/vs/workbench/contrib/sessions/browser/chat/chatView.ts \
+            src/vs/sessions/contrib/chat/test/browser/chatView.test.ts > hygiene.log 2>&1
+          git diff --check
+      - name: Run input and visibility regressions
+        id: tests
+        continue-on-error: true
+        run: |
+          printf '%s\n' \
+            src/vs/workbench/contrib/chat/test/browser/agentSessions/agentSessionsDataSource.test.ts \
+            src/vs/sessions/contrib/chat/test/browser/chatView.test.ts \
+            src/vs/workbench/contrib/chat/test/browser/widget/chatContentParts/chatQuestionCarouselPart.test.ts \
+            src/vs/workbench/contrib/chat/test/browser/widget/chatContentParts/chatErrorConfirmationPart.test.ts \
+            src/vs/workbench/contrib/chat/test/browser/widget/chatContentParts/chatToolConfirmationSubPart.test.ts > input-tests.txt
+          node test/unit/browser/index.js --runList input-tests.txt --browser chromium \
+            --grep "capped grouping|input-only|shows only the input|ChatQuestionCarouselPart.*(boolean|multiSelect|singleSelect|required|validation|submit|freeform|password)|ChatErrorConfirmation|ChatToolConfirmation" \
+            --tfs agents-input-parity > tests.log 2>&1
+      - name: Exercise shared forms in Chat and Agents layouts
+        id: experiment
+        continue-on-error: true
+        env:
+          VSCODE_INPUT_PARITY_CAPTURE: "true"
+        run: |
+          node test/unit/browser/index.js \
+            --run src/vs/workbench/contrib/chat/test/browser/widget/chatContentParts/chatQuestionCarouselPart.test.ts \
+            --browser chromium --grep "Agents input parity experiment" --tfs agents-input-experiment > experiment.log 2>&1
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        if: always()
+        with:
+          name: agents-input-parity-evidence
+          path: |
+            test-results
+            screenshots
+            typecheck.log
+            hygiene.log
+            tests.log
+            experiment.log
+          retention-days: 30
+      - name: Require validation success
+        if: always()
+        run: |
+          test "${{ steps.typecheck.outcome }}" = success
+          test "${{ steps.hygiene.outcome }}" = success
+          test "${{ steps.tests.outcome }}" = success
+          test "${{ steps.experiment.outcome }}" = success

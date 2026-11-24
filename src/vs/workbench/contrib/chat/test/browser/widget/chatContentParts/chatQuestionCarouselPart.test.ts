@@ -5,7 +5,7 @@
 
 import assert from 'assert';
 import { isSafari } from '../../../../../../../base/browser/browser.js';
-import { getWindow } from '../../../../../../../base/browser/dom.js';
+import { $, append, getWindow } from '../../../../../../../base/browser/dom.js';
 import { mainWindow } from '../../../../../../../base/browser/window.js';
 import { Codicon } from '../../../../../../../base/common/codicons.js';
 import { MarkdownString } from '../../../../../../../base/common/htmlContent.js';
@@ -15,6 +15,8 @@ import { ensureNoDisposablesAreLeakedInTestSuite } from '../../../../../../../ba
 import { ICodeEditor } from '../../../../../../../editor/browser/editorBrowser.js';
 import { ICodeEditorService } from '../../../../../../../editor/browser/services/codeEditorService.js';
 import { workbenchInstantiationService } from '../../../../../../test/browser/workbenchTestServices.js';
+import { ColorThemeData } from '../../../../../../services/themes/common/colorThemeData.js';
+import { generateColorThemeCSS } from '../../../../../../services/themes/browser/colorThemeCss.js';
 import { ChatQuestionCarouselPart, IChatQuestionCarouselOptions } from '../../../../browser/widget/chatContentParts/chatQuestionCarouselPart.js';
 import { IChatQuestionAnswerValue, IChatQuestionCarousel } from '../../../../common/chatService/chatService.js';
 import { IChatContentPartRenderContext } from '../../../../browser/widget/chatContentParts/chatContentParts.js';
@@ -26,6 +28,7 @@ import { IMarkdownRendererService, MarkdownRendererService } from '../../../../.
 import { IOpenerService } from '../../../../../../../platform/opener/common/opener.js';
 import { IUserInteractionService, MockUserInteractionService } from '../../../../../../../platform/userInteraction/browser/userInteractionService.js';
 import '../../../../../../browser/media/style.css';
+import '../../../../../sessions/browser/chat/media/chatView.css';
 
 function createMockCarousel(questions: IChatQuestionCarousel['questions'], allowSkip: boolean = true): IChatQuestionCarousel {
 	return {
@@ -96,6 +99,54 @@ suite('ChatQuestionCarouselPart', () => {
 	teardown(() => {
 		submittedAnswers = null;
 		submittedByUser = undefined;
+	});
+
+	test('Agents input parity experiment', async (): Promise<void> => {
+		for (const host of ['chat', 'agents', 'compact']) {
+			const root: HTMLElement = append(document.body, $('.monaco-workbench.vs-dark'));
+			root.classList.toggle('agent-sessions-workbench', host !== 'chat');
+			root.dataset.inputParity = host;
+			root.style.width = '680px';
+			root.style.padding = '16px';
+			const theme: HTMLStyleElement = append(root, $('style'));
+			theme.textContent = generateColorThemeCSS(ColorThemeData.createUnloadedTheme('vs-dark'), '.monaco-workbench').code;
+			const view: HTMLElement = append(root, $('.chat-view-chat.sessions-chat'));
+			view.classList.toggle('input-only', host === 'compact');
+			const input: HTMLElement = append(append(view, $('.interactive-session')), $('.chat-input-container'));
+			store.add(toDisposable(() => root.remove()));
+			createWidget(createMockCarousel([
+				{ id: 'text', type: 'text', title: 'Describe the change', required: true, validation: { minLength: 3 } },
+				{ id: 'choice', type: 'singleSelect', title: 'Choose a target', options: [{ id: 'a', label: 'Target A', value: 'a' }, { id: 'b', label: 'Target B', value: 'b' }] },
+				{ id: 'features', type: 'multiSelect', title: 'Choose features', options: [{ id: 'x', label: 'Feature X', value: 'x' }, { id: 'y', label: 'Feature Y', value: 'y' }], allowFreeformInput: true },
+			]), undefined, input);
+			assert.ok(widget.domNode.checkVisibility());
+			const primary = (): HTMLElement => widget.domNode.querySelector<HTMLElement>('.chat-question-submit-button')!;
+			assert.strictEqual(primary().getAttribute('aria-disabled'), 'true');
+			setAnswer('Add shared input controls');
+			primary().click();
+			widget.domNode.querySelectorAll<HTMLElement>('.chat-question-list-item')[1].click();
+			primary().click();
+			widget.domNode.querySelectorAll<HTMLElement>('.chat-question-list-item').forEach((option: HTMLElement): void => option.click());
+			setAnswer('Custom feature');
+			await new Promise<void>((resolve, reject): void => {
+				const targetWindow: Window = getWindow(root);
+				const captured = (): void => { targetWindow.clearTimeout(timer); resolve(); };
+				const timer: number = targetWindow.setTimeout(() => {
+					document.removeEventListener('input-parity-captured', captured);
+					reject(new Error('Input parity capture timed out'));
+				}, 30_000);
+				document.addEventListener('input-parity-captured', captured, { once: true });
+				console.log(`INPUT_PARITY:${host}`);
+			});
+			primary().click();
+			assert.deepStrictEqual(submittedAnswers && Object.fromEntries(submittedAnswers), {
+				text: 'Add shared input controls',
+				choice: { selectedValue: 'b', freeformValue: undefined },
+				features: { selectedValues: ['x', 'y'], freeformValue: 'Custom feature' },
+			}, host);
+			widget.dispose();
+			root.remove();
+		}
 	});
 
 	suite('Basic Rendering', () => {

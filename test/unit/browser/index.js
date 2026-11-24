@@ -400,6 +400,19 @@ async function runTestsInBrowser(testModules, browserType, browserChannel, grep,
 	}
 
 	page.on('console', async msg => {
+		if (process.env.VSCODE_INPUT_PARITY_CAPTURE && msg.text().startsWith('INPUT_PARITY:')) {
+			const host = msg.text().slice('INPUT_PARITY:'.length);
+			if (!['chat', 'agents', 'compact'].includes(host)) {
+				throw new Error(`Unexpected input parity host: ${host}`);
+			}
+			await fs.promises.mkdir(path.join(rootDir, 'screenshots'), { recursive: true });
+			await page.locator('[data-input-parity]').screenshot({
+				path: path.join(rootDir, 'screenshots', `input-${host}.png`),
+				animations: 'disabled',
+			});
+			await page.evaluate(() => document.dispatchEvent(new Event('input-parity-captured')));
+			return;
+		}
 		consoleLogFn(msg)(msg.text(), await Promise.all(msg.args().map(async arg => await arg.jsonValue())));
 	});
 
