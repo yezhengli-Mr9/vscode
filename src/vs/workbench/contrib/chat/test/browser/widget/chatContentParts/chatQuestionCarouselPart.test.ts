@@ -164,8 +164,6 @@ suite('ChatQuestionCarouselPart', () => {
 			primary().click();
 			await settleLayout();
 			widget.domNode.querySelectorAll<HTMLElement>('.chat-question-list-item')[1].click();
-			await revealAnswers('Next');
-			primary().click();
 			await settleLayout();
 			widget.domNode.querySelectorAll<HTMLElement>('.chat-question-list-item').forEach((option: HTMLElement): void => option.click());
 			setAnswer('Custom feature');
