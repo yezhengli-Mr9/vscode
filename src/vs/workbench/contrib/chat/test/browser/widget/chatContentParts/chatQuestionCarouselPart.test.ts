@@ -133,18 +133,7 @@ suite('ChatQuestionCarouselPart', () => {
 			await settleLayout();
 			assert.ok(widget.domNode.checkVisibility());
 			const primary = (): HTMLElement => widget.domNode.querySelector<HTMLElement>('.chat-question-submit-button')!;
-			assert.strictEqual(primary().getAttribute('aria-label'), 'Next');
-			setAnswer('Add shared input controls');
-			primary().click();
-			await settleLayout();
-			widget.domNode.querySelectorAll<HTMLElement>('.chat-question-list-item')[1].click();
-			assert.strictEqual(primary().getAttribute('aria-label'), 'Next');
-			primary().click();
-			await settleLayout();
-			widget.domNode.querySelectorAll<HTMLElement>('.chat-question-list-item').forEach((option: HTMLElement): void => option.click());
-			setAnswer('Custom feature');
-			assert.strictEqual(primary().getAttribute('aria-label'), 'Submit');
-			await new Promise<void>((resolve, reject): void => {
+			const capture = (stage: string = ''): Promise<void> => new Promise<void>((resolve, reject): void => {
 				const targetWindow: Window = getWindow(root);
 				const captured = (): void => { targetWindow.clearTimeout(timer); resolve(); };
 				const timer: number = targetWindow.setTimeout(() => {
@@ -152,8 +141,29 @@ suite('ChatQuestionCarouselPart', () => {
 					reject(new Error('Input parity capture timed out'));
 				}, 30_000);
 				document.addEventListener('input-parity-captured', captured, { once: true });
-				console.log(`INPUT_PARITY:${host}`);
+				console.log(`INPUT_PARITY:${host}${stage}`);
 			});
+			const revealAnswers = async (label: string): Promise<void> => {
+				if (primary().getAttribute('aria-label') === 'Scroll to Answers') {
+					primary().click();
+					await settleLayout();
+				}
+				assert.strictEqual(primary().getAttribute('aria-label'), label);
+			};
+			await capture('-required');
+			await revealAnswers('Next');
+			assert.strictEqual(primary().getAttribute('aria-disabled'), 'true');
+			setAnswer('Add shared input controls');
+			primary().click();
+			await settleLayout();
+			widget.domNode.querySelectorAll<HTMLElement>('.chat-question-list-item')[1].click();
+			await revealAnswers('Next');
+			primary().click();
+			await settleLayout();
+			widget.domNode.querySelectorAll<HTMLElement>('.chat-question-list-item').forEach((option: HTMLElement): void => option.click());
+			setAnswer('Custom feature');
+			await revealAnswers('Submit');
+			await capture();
 			primary().click();
 			assert.deepStrictEqual(submittedAnswers && Object.fromEntries(submittedAnswers), {
 				text: 'Add shared input controls',

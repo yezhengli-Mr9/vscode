@@ -402,7 +402,7 @@ async function runTestsInBrowser(testModules, browserType, browserChannel, grep,
 	page.on('console', async msg => {
 		if (process.env.VSCODE_INPUT_PARITY_CAPTURE && msg.text().startsWith('INPUT_PARITY:')) {
 			const host = msg.text().slice('INPUT_PARITY:'.length);
-			if (!['chat', 'agents', 'compact'].includes(host)) {
+			if (!/^(chat|agents|compact)(-required)?$/.test(host)) {
 				throw new Error(`Unexpected input parity host: ${host}`);
 			}
 			await fs.promises.mkdir(path.join(rootDir, 'screenshots'), { recursive: true });
