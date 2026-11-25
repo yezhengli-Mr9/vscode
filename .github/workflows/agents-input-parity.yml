@@ -45,6 +45,8 @@ jobs:
         id: hygiene
         continue-on-error: true
         run: |
+          node build/lib/formatter.ts --replace src/vs/sessions/contrib/chat/test/browser/chatView.test.ts
+          git diff > formatting.patch
           node build/hygiene.ts \
             src/vs/workbench/contrib/chat/browser/agentSessions/agentSessionsViewer.ts \
             src/vs/workbench/contrib/chat/test/browser/agentSessions/agentSessionsDataSource.test.ts \
@@ -84,6 +86,7 @@ jobs:
             hygiene.log
             tests.log
             experiment.log
+            formatting.patch
           retention-days: 30
       - name: Require validation success
         if: always()
