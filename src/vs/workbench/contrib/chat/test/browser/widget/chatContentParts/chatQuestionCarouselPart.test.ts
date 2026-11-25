@@ -109,6 +109,7 @@ suite('ChatQuestionCarouselPart', () => {
 			}
 		};
 		for (const host of ['chat', 'agents', 'compact']) {
+			submittedAnswers = null;
 			const root: HTMLElement = append(document.body, $('.monaco-workbench.vs-dark'));
 			root.classList.toggle('agent-sessions-workbench', host !== 'chat');
 			root.dataset.inputParity = host;
@@ -153,9 +154,12 @@ suite('ChatQuestionCarouselPart', () => {
 				}
 				assert.strictEqual(primary().getAttribute('aria-label'), label);
 			};
-			await capture('-required');
 			await revealAnswers('Next');
-			assert.strictEqual(primary().getAttribute('aria-disabled'), 'true');
+			primary().click();
+			assert.ok(widget.domNode.querySelector('.chat-question-validation-message')?.textContent);
+			assert.strictEqual(submittedAnswers, null);
+			await settleLayout();
+			await capture('-required');
 			setAnswer('Add shared input controls');
 			primary().click();
 			await settleLayout();
