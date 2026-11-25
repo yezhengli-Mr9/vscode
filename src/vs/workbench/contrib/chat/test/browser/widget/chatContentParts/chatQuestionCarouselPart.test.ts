@@ -102,31 +102,48 @@ suite('ChatQuestionCarouselPart', () => {
 	});
 
 	test('Agents input parity experiment', async (): Promise<void> => {
+		const settleLayout = async (): Promise<void> => {
+			for (let frame = 0; frame < 3; frame++) {
+				await new Promise<void>(resolve => mainWindow.requestAnimationFrame(() => resolve()));
+			}
+		};
 		for (const host of ['chat', 'agents', 'compact']) {
 			const root: HTMLElement = append(document.body, $('.monaco-workbench.vs-dark'));
 			root.classList.toggle('agent-sessions-workbench', host !== 'chat');
 			root.dataset.inputParity = host;
 			root.style.width = '680px';
 			root.style.padding = '16px';
+			const colorTheme: ColorThemeData = ColorThemeData.createUnloadedTheme('vs-dark');
 			const theme: HTMLStyleElement = append(root, $('style'));
-			theme.textContent = generateColorThemeCSS(ColorThemeData.createUnloadedTheme('vs-dark'), '.monaco-workbench').code;
+			theme.textContent = generateColorThemeCSS(colorTheme, '.monaco-workbench').code;
+			root.style.backgroundColor = colorTheme.getColor('editor.background')!.toString();
+			root.style.color = colorTheme.getColor('foreground')!.toString();
+			root.style.font = '13px "Segoe UI", sans-serif';
+			append(root, $('h2')).textContent = `${host}: shared question form`;
 			const view: HTMLElement = append(root, $('.chat-view-chat.sessions-chat'));
 			view.classList.toggle('input-only', host === 'compact');
-			const input: HTMLElement = append(append(view, $('.interactive-session')), $('.chat-input-container'));
+			const inputPart: HTMLElement = append(append(view, $('.interactive-session')), $('.interactive-input-part'));
+			const input: HTMLElement = append(append(inputPart, $('.interactive-input-and-edit-session')), $('.chat-question-carousel-widget-container'));
 			store.add(toDisposable(() => root.remove()));
 			createWidget(createMockCarousel([
 				{ id: 'text', type: 'text', title: 'Describe the change', required: true, validation: { minLength: 3 } },
 				{ id: 'choice', type: 'singleSelect', title: 'Choose a target', options: [{ id: 'a', label: 'Target A', value: 'a' }, { id: 'b', label: 'Target B', value: 'b' }] },
 				{ id: 'features', type: 'multiSelect', title: 'Choose features', options: [{ id: 'x', label: 'Feature X', value: 'x' }, { id: 'y', label: 'Feature Y', value: 'y' }], allowFreeformInput: true },
 			]), undefined, input);
+			await settleLayout();
 			assert.ok(widget.domNode.checkVisibility());
 			const primary = (): HTMLElement => widget.domNode.querySelector<HTMLElement>('.chat-question-submit-button')!;
+			assert.strictEqual(primary().getAttribute('aria-label'), 'Next');
 			setAnswer('Add shared input controls');
 			primary().click();
+			await settleLayout();
 			widget.domNode.querySelectorAll<HTMLElement>('.chat-question-list-item')[1].click();
+			assert.strictEqual(primary().getAttribute('aria-label'), 'Next');
 			primary().click();
+			await settleLayout();
 			widget.domNode.querySelectorAll<HTMLElement>('.chat-question-list-item').forEach((option: HTMLElement): void => option.click());
 			setAnswer('Custom feature');
+			assert.strictEqual(primary().getAttribute('aria-label'), 'Submit');
 			await new Promise<void>((resolve, reject): void => {
 				const targetWindow: Window = getWindow(root);
 				const captured = (): void => { targetWindow.clearTimeout(timer); resolve(); };
@@ -142,7 +159,7 @@ suite('ChatQuestionCarouselPart', () => {
 				text: 'Add shared input controls',
 				choice: { selectedValue: 'b', freeformValue: undefined },
 				features: { selectedValues: ['x', 'y'], freeformValue: 'Custom feature' },
-			}, host);
+			});
 			widget.dispose();
 			root.remove();
 		}
