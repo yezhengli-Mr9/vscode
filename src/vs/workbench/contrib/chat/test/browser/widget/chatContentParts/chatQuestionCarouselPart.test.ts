@@ -18,6 +18,7 @@ import { workbenchInstantiationService } from '../../../../../../test/browser/wo
 import { ColorThemeData } from '../../../../../../services/themes/common/colorThemeData.js';
 import { generateColorThemeCSS } from '../../../../../../services/themes/browser/colorThemeCss.js';
 import { ChatQuestionCarouselPart, IChatQuestionCarouselOptions } from '../../../../browser/widget/chatContentParts/chatQuestionCarouselPart.js';
+import { chatInputSurfaceStackClass, chatInputSurfaceStackSlotClass } from '../../../../browser/widget/input/chatInputStack.js';
 import { IChatQuestionAnswerValue, IChatQuestionCarousel } from '../../../../common/chatService/chatService.js';
 import { IChatContentPartRenderContext } from '../../../../browser/widget/chatContentParts/chatContentParts.js';
 import { ChatQuestionCarouselData } from '../../../../common/model/chatProgressTypes/chatQuestionCarouselData.js';
@@ -122,8 +123,10 @@ suite('ChatQuestionCarouselPart', () => {
 			append(root, $('h2')).textContent = `${host}: shared question form`;
 			const view: HTMLElement = append(root, $('.chat-view-chat.sessions-chat'));
 			view.classList.toggle('input-only', host === 'compact');
-			const inputPart: HTMLElement = append(append(view, $('.interactive-session')), $('.interactive-input-part'));
-			const input: HTMLElement = append(append(inputPart, $('.interactive-input-and-edit-session')), $('.chat-question-carousel-widget-container'));
+			const session: HTMLElement = append(view, $('.interactive-session'));
+			session.style.width = '100%';
+			const inputPart: HTMLElement = append(session, $(`.interactive-input-part.${chatInputSurfaceStackClass}`));
+			const input: HTMLElement = append(append(inputPart, $(`.interactive-input-and-edit-session.${chatInputSurfaceStackClass}`)), $(`.chat-question-carousel-widget-container.${chatInputSurfaceStackSlotClass}`));
 			store.add(toDisposable(() => root.remove()));
 			createWidget(createMockCarousel([
 				{ id: 'text', type: 'text', title: 'Describe the change', required: true, validation: { minLength: 3 } },

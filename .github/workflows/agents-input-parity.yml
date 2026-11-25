@@ -62,7 +62,7 @@ jobs:
             src/vs/workbench/contrib/chat/test/browser/widget/chatContentParts/chatErrorConfirmationPart.test.ts \
             src/vs/workbench/contrib/chat/test/browser/widget/chatContentParts/chatToolConfirmationSubPart.test.ts > input-tests.txt
           node test/unit/browser/index.js --runList input-tests.txt --browser chromium \
-            --grep "capped grouping|input-only|shows only the input|ChatQuestionCarouselPart.*(boolean|multiSelect|singleSelect|required|validation|submit|freeform|password)|ChatErrorConfirmation|ChatToolConfirmation" \
+            --grep "capped grouping|input-only|shows only the input|ChatQuestionCarouselPart.*(boolean|multiSelect|singleSelect|required|validation|submit|freeform|password)|ChatErrorConfirmation|ToolConfirmationSubPart" \
             --tfs agents-input-parity > tests.log 2>&1
       - name: Exercise shared forms in Chat and Agents layouts
         id: experiment
