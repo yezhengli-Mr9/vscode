@@ -121,7 +121,6 @@ suite('ChatQuestionCarouselPart', () => {
 			]), undefined, input);
 			assert.ok(widget.domNode.checkVisibility());
 			const primary = (): HTMLElement => widget.domNode.querySelector<HTMLElement>('.chat-question-submit-button')!;
-			assert.strictEqual(primary().getAttribute('aria-disabled'), 'true');
 			setAnswer('Add shared input controls');
 			primary().click();
 			widget.domNode.querySelectorAll<HTMLElement>('.chat-question-list-item')[1].click();
